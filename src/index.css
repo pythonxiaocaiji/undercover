@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #FF5A5F;
+  --color-yellow-accent: #FFD166;
+  --color-blue-accent: #4CC9F0;
+  --color-purple-accent: #9B5DE5;
+  --color-emerald-accent: #06D6A0;
+  --color-game-bg: #F8F9FB;
+  --color-game-card: #FFFFFF;
+  
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-game-bg text-slate-800 antialiased;
+  }
+}
+
+@layer components {
+  .card-shadow {
+    box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.04), 0 4px 12px -4px rgba(0, 0, 0, 0.02);
+  }
+  
+  .card-shadow-hover {
+    box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.08), 0 8px 16px -6px rgba(0, 0, 0, 0.04);
+  }
+}
