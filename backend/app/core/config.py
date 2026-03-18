@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_exp_minutes: int = 60 * 24 * 7
 
+    admin_phones: str = ""
+
     log_level: str = "INFO"
 
     @property
@@ -44,6 +46,14 @@ class Settings(BaseSettings):
             f"mysql+asyncmy://{user}:{password}"
             f"@{self.mysql_host}:{self.mysql_port}/{self.mysql_db}?charset=utf8mb4"
         )
+
+    @property
+    def admin_phones_list(self) -> list[str]:
+        raw = (self.admin_phones or "").strip()
+        if not raw:
+            return []
+        parts = [p.strip() for p in raw.split(",")]
+        return [p for p in parts if p]
 
 
 settings = Settings()

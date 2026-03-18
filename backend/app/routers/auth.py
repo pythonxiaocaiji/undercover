@@ -11,6 +11,7 @@ from PIL import Image, ImageDraw, ImageFont
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password, get_current_user
 from app.db.session import get_db
 from app.models.user import User
@@ -54,6 +55,15 @@ def _pick_default_avatar(phone: str) -> str:
         return _DEFAULT_AVATARS[0]
     idx = sum(ord(c) for c in phone) % len(_DEFAULT_AVATARS)
     return _DEFAULT_AVATARS[idx]
+
+
+def _is_admin_phone(phone: str) -> bool:
+    p = (phone or "").strip()
+    return bool(p and p in settings.admin_phones_list)
+
+
+def _is_admin_user(user: User) -> bool:
+    return int(getattr(user, "role", 1) or 1) == 2
 
 
 def _validate_phone(phone: str) -> None:
@@ -146,6 +156,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         id=uuid.uuid4().hex,
         phone=payload.phone,
         password_hash=hash_password(payload.password),
+        role=2 if _is_admin_phone(payload.phone) else 1,
         username=_gen_username(payload.phone),
         avatar=_pick_default_avatar(payload.phone),
         phone_verified_at=None,
@@ -155,7 +166,14 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
     db.add(user)
     await db.commit()
 
-    return ProfileResponse(id=user.id, phone=user.phone, username=user.username, avatar=user.avatar)
+    return ProfileResponse(
+        id=user.id,
+        phone=user.phone,
+        username=user.username,
+        avatar=user.avatar,
+        role=int(getattr(user, "role", 1) or 1),
+        is_admin=_is_admin_user(user),
+    )
 
 
 @router.post("/avatar", response_model=ProfileResponse)
@@ -187,7 +205,14 @@ async def upload_avatar(
     user.updated_at = datetime.utcnow()
     await db.commit()
 
-    return ProfileResponse(id=user.id, phone=user.phone, username=user.username, avatar=user.avatar)
+    return ProfileResponse(
+        id=user.id,
+        phone=user.phone,
+        username=user.username,
+        avatar=user.avatar,
+        role=int(getattr(user, "role", 1) or 1),
+        is_admin=_is_admin_user(user),
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -210,7 +235,14 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.get("/me", response_model=ProfileResponse)
 async def me(user: User = Depends(get_current_user)):
-    return ProfileResponse(id=user.id, phone=user.phone, username=user.username, avatar=user.avatar)
+    return ProfileResponse(
+        id=user.id,
+        phone=user.phone,
+        username=user.username,
+        avatar=user.avatar,
+        role=int(getattr(user, "role", 1) or 1),
+        is_admin=_is_admin_user(user),
+    )
 
 
 @router.put("/profile", response_model=ProfileResponse)
@@ -237,4 +269,11 @@ async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depen
         user.updated_at = datetime.utcnow()
         await db.commit()
 
-    return ProfileResponse(id=user.id, phone=user.phone, username=user.username, avatar=user.avatar)
+    return ProfileResponse(
+        id=user.id,
+        phone=user.phone,
+        username=user.username,
+        avatar=user.avatar,
+        role=int(getattr(user, "role", 1) or 1),
+        is_admin=_is_admin_user(user),
+    )

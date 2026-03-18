@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play, Plus, Users, Clock, Tag, ChevronLeft, Sparkles } from 'lucide-react';
 import { RoomConfig } from '../types';
@@ -9,25 +9,55 @@ interface HomeViewProps {
   onMatch: (roomId: string) => Promise<void>;
   meName: string;
   meAvatar: string;
+  wordCategories: string[];
+  onRefreshWordCategories?: () => Promise<void>;
+  isAdmin?: boolean;
+  onWordsAdmin?: () => void;
   activeRoomId?: string | null;
   onResumeRoom?: () => void;
   onProfile: () => void;
   onLogout: () => void;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, activeRoomId, onResumeRoom, onProfile, onLogout }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onProfile, onLogout }) => {
   const [view, setView] = useState<'main' | 'create' | 'join'>('main');
   const [joinRoomId, setJoinRoomId] = useState('');
   const [config, setConfig] = useState<RoomConfig>({
+    roomName: `${meName}创建的房间`,
     playerCount: 8,
     speakingTime: 30,
     votingTime: 30,
-    wordCategory: '美食',
+    wordCategory: wordCategories?.[0] || '随机',
     undercoverCount: 2,
   });
-
-  const categories = ['美食', '动物', '科技', '电影', '随机'];
   const times = [30, 60, 90];
+
+  useEffect(() => {
+    if (!wordCategories || wordCategories.length <= 0) return;
+    setConfig((prev) => {
+      const current = (prev.wordCategory || '').trim();
+      const isCustom = Boolean(current && !wordCategories.includes(current));
+      if (isCustom) return prev;
+      if (wordCategories.includes(current)) return prev;
+      return { ...prev, wordCategory: wordCategories[0] };
+    });
+  }, [wordCategories]);
+
+  useEffect(() => {
+    if (view !== 'create') return;
+    if (!onRefreshWordCategories) return;
+    onRefreshWordCategories().catch(() => {
+    });
+  }, [view, onRefreshWordCategories]);
+
+  useEffect(() => {
+    if (view !== 'create') return;
+    setConfig((prev) => {
+      const name = (prev.roomName || '').trim();
+      if (name) return prev;
+      return { ...prev, roomName: `${meName}创建的房间` };
+    });
+  }, [view, meName]);
 
   const handleJoinRoom = async () => {
     if (joinRoomId.length !== 6) return;
@@ -51,7 +81,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
   };
 
   return (
-    <div className="min-h-screen bg-game-bg flex flex-col items-center justify-center px-6 py-12">
+    <div className="min-h-screen bg-game-bg flex flex-col items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
       <AnimatePresence mode="wait">
         {view === 'main' ? (
           <motion.div
@@ -73,9 +103,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                   </button>
                 </div>
               </div>
-              <button onClick={onLogout} className="text-xs font-black text-red-500 hover:text-red-600">
-                退出
-              </button>
+              <div className="flex items-center gap-3">
+                {isAdmin && onWordsAdmin && (
+                  <button onClick={onWordsAdmin} className="text-xs font-black text-primary hover:brightness-110">
+                    词库管理
+                  </button>
+                )}
+                <button onClick={onLogout} className="text-xs font-black text-red-500 hover:text-red-600">
+                  退出
+                </button>
+              </div>
             </div>
 
             <div className="space-y-4">
@@ -197,7 +234,20 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
               <h2 className="text-2xl font-black text-slate-900">房间设置</h2>
             </div>
 
-            <div className="bg-white rounded-[40px] p-8 space-y-8 card-shadow">
+            <div className="bg-white rounded-[32px] sm:rounded-[40px] p-5 sm:p-8 space-y-6 sm:space-y-8 card-shadow max-h-[calc(100vh-160px)] overflow-y-auto">
+              {/* Room Name */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest">
+                  <span>房间名称</span>
+                </div>
+                <input
+                  value={config.roomName}
+                  onChange={(e) => setConfig({ ...config, roomName: e.target.value })}
+                  placeholder={`${meName}创建的房间`}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-900 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+
               {/* Player Count */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest">
@@ -277,7 +327,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                   <span>词语类别</span>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {categories.map(c => (
+                  {wordCategories.map(c => (
                     <button
                       key={c}
                       onClick={() => setConfig({...config, wordCategory: c})}
@@ -292,12 +342,6 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                     </button>
                   ))}
                 </div>
-                <input 
-                  type="text"
-                  placeholder="或者输入自定义词语/任务..."
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-accent/50"
-                  onChange={(e) => setConfig({...config, wordCategory: e.target.value})}
-                />
               </div>
 
               <motion.button
@@ -310,7 +354,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                     window.alert(String(e?.message || e));
                   }
                 }}
-                className="w-full h-16 bg-primary text-white rounded-3xl font-black text-lg shadow-xl shadow-primary/20"
+                className="w-full h-14 sm:h-16 bg-primary text-white rounded-3xl font-black text-lg shadow-xl shadow-primary/20"
               >
                 开始游戏
               </motion.button>

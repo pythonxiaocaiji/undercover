@@ -35,6 +35,8 @@ class ProfileResponse(BaseModel):
     phone: str
     username: str
     avatar: str
+    role: int = 1
+    is_admin: bool = False
 
 
 class CaptchaResponse(BaseModel):

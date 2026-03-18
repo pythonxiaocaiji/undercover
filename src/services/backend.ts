@@ -1,5 +1,10 @@
 import type { GameState, Player, RoomConfig } from '../types';
 
+function authHeaders() {
+  const token = localStorage.getItem('undercover_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export type BackendRoomState = {
   roomId: string;
   roomName: string;
@@ -115,7 +120,11 @@ export function wsSendStart(ws: WebSocket, hostPlayerId: string) {
   ws.send(JSON.stringify({ type: 'game:start', payload: { hostPlayerId } }));
 }
 
-export function wsSendVote(ws: WebSocket, voterPlayerId: string, targetPlayerId: string) {
+export function wsSendRestart(ws: WebSocket, hostPlayerId: string) {
+  ws.send(JSON.stringify({ type: 'game:restart', payload: { hostPlayerId } }));
+}
+
+export function wsSendVote(ws: WebSocket, voterPlayerId: string, targetPlayerId: string | null) {
   ws.send(JSON.stringify({ type: 'vote', payload: { voterPlayerId, targetPlayerId } }));
 }
 
@@ -125,4 +134,56 @@ export function wsSendReaction(ws: WebSocket, fromPlayerId: string, targetPlayer
 
 export function wsSendStateUpdate(ws: WebSocket, state: BackendRoomState) {
   ws.send(JSON.stringify({ type: 'state:update', payload: { state } }));
+}
+
+export type WordCategoryDto = { id: string; name: string };
+export type WordPairDto = { id: string; category_id: string; civilian_word: string; undercover_word: string };
+
+export async function listWordCategories(): Promise<WordCategoryDto[]> {
+  const res = await fetch(`${httpBaseUrl()}/words/categories`, { method: 'GET' });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function listWordPairs(categoryId: string): Promise<WordPairDto[]> {
+  const url = `${httpBaseUrl()}/words/pairs?category_id=${encodeURIComponent(categoryId)}`;
+  const res = await fetch(url, { method: 'GET' });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function adminCreateWordCategory(name: string): Promise<WordCategoryDto> {
+  const res = await fetch(`${httpBaseUrl()}/words/categories`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ name }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function adminDeleteWordCategory(categoryId: string): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/words/categories/${encodeURIComponent(categoryId)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+}
+
+export async function adminCreateWordPair(input: { category_id: string; civilian_word: string; undercover_word: string }): Promise<WordPairDto> {
+  const res = await fetch(`${httpBaseUrl()}/words/pairs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(input),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function adminDeleteWordPair(pairId: string): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/words/pairs/${encodeURIComponent(pairId)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
 }

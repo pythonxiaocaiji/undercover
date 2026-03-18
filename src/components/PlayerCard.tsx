@@ -89,7 +89,7 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
             已淘汰
           </span>
-          {isMe && player.role && (
+          {player.role && (
             <span className="block text-[10px] font-black text-slate-500">
               身份：{player.role}
             </span>

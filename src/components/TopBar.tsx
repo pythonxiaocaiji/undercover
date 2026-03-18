@@ -48,10 +48,12 @@ export const TopBar: React.FC<TopBarProps> = ({ roomName, roomId, playerCount, m
           }`}>
             {phase}阶段
           </span>
-          <div className="flex items-center gap-1.5 text-slate-900 font-bold">
-            <Timer className="w-4 h-4 text-slate-400" />
-            <span className="tabular-nums">{timer}s</span>
-          </div>
+          {phase !== '大厅' && (
+            <div className="flex items-center gap-1.5 text-slate-900 font-bold">
+              <Timer className="w-4 h-4 text-slate-400" />
+              <span className="tabular-nums">{timer}s</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

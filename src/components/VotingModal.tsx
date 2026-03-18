@@ -8,7 +8,7 @@ interface VotingModalProps {
   isOpen: boolean;
   onClose: () => void;
   players: Player[];
-  onVote: (playerId: string) => void;
+  onVote: (playerId: string | null) => void;
   myPlayerId: string;
 }
 
@@ -16,10 +16,8 @@ export const VotingModal: React.FC<VotingModalProps> = ({ isOpen, onClose, playe
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleConfirm = () => {
-    if (selectedId) {
-      onVote(selectedId);
-      onClose();
-    }
+    onVote(selectedId);
+    onClose();
   };
 
   return (
@@ -75,20 +73,26 @@ export const VotingModal: React.FC<VotingModalProps> = ({ isOpen, onClose, playe
                 ))}
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleConfirm}
-                disabled={!selectedId}
-                className={`w-full h-16 flex items-center justify-center gap-2 rounded-3xl font-bold text-white shadow-xl transition-all ${
-                  selectedId 
-                    ? 'bg-primary shadow-primary/20 hover:brightness-110' 
-                    : 'bg-slate-200 cursor-not-allowed'
-                }`}
-              >
-                <Check className="w-6 h-6" />
-                <span>确认投票</span>
-              </motion.button>
+              <div className="space-y-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setSelectedId(null)}
+                  className="w-full h-12 flex items-center justify-center rounded-3xl font-bold text-slate-600 bg-white border border-slate-100"
+                >
+                  弃票
+                </motion.button>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleConfirm}
+                  className="w-full h-16 flex items-center justify-center gap-2 rounded-3xl font-bold text-white shadow-xl transition-all bg-primary shadow-primary/20 hover:brightness-110"
+                >
+                  <Check className="w-6 h-6" />
+                  <span>{selectedId ? '确认投票' : '确认弃票'}</span>
+                </motion.button>
+              </div>
             </div>
           </motion.div>
         </div>

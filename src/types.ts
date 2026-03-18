@@ -17,6 +17,7 @@ export interface Player {
 }
 
 export interface RoomConfig {
+  roomName: string;
   playerCount: number;
   speakingTime: number;
   votingTime: number;

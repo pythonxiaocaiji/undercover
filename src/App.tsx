@@ -9,13 +9,16 @@ import { HomeView } from './components/HomeView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
 import { ProfileView } from './components/ProfileView';
+import { WordsAdminView } from './components/WordsAdminView';
 import { Player, GameState, RoomConfig, PlayerRole } from './types';
 import {
   BackendRoomState,
   connectRoomWs,
   createRoom,
   joinRoom,
+  listWordCategories,
   wsSendReaction,
+  wsSendRestart,
   wsSendReady,
   wsSendStart,
   wsSendStateUpdate,
@@ -24,49 +27,15 @@ import {
 import { clearToken, getToken, me as fetchMe } from './services/auth';
 import type { UserProfile } from './services/auth';
 
-const MOCK_PLAYERS: Player[] = [
-  { id: '1', name: '阿强', avatar: 'https://picsum.photos/seed/alex/200', status: 'active' },
-  { id: '2', name: '小明', avatar: 'https://picsum.photos/seed/jordan/200', status: 'active' },
-  { id: '3', name: '凯西', avatar: 'https://picsum.photos/seed/casey/200', status: 'active' },
-  { id: '4', name: '瑞利', avatar: 'https://picsum.photos/seed/riley/200', status: 'active' },
-  { id: '5', name: '泰勒', avatar: 'https://picsum.photos/seed/taylor/200', status: 'active' },
-  { id: '6', name: '摩根', avatar: 'https://picsum.photos/seed/morgan/200', status: 'active' },
-  { id: '7', name: '斯凯', avatar: 'https://picsum.photos/seed/skyler/200', status: 'active' },
-  { id: '8', name: '奎恩', avatar: 'https://picsum.photos/seed/quinn/200', status: 'active' },
-  { id: '9', name: '小红', avatar: 'https://picsum.photos/seed/red/200', status: 'active' },
-  { id: '10', name: '小刚', avatar: 'https://picsum.photos/seed/strong/200', status: 'active' },
-];
-
-const WORD_PAIRS: Record<string, [string, string][]>= {
-  '美食': [
-    ['包子', '饺子'],
-    ['汉堡', '三明治'],
-    ['火锅', '冒菜'],
-    ['牛奶', '豆浆'],
-  ],
-  '动物': [
-    ['老虎', '狮子'],
-    ['猫', '狗'],
-    ['企鹅', '鸭子'],
-    ['狼', '狐狸'],
-  ],
-  '科技': [
-    ['手机', '平板'],
-    ['电脑', '笔记本'],
-    ['微信', '支付宝'],
-    ['耳机', '音箱'],
-  ],
-  '电影': [
-    ['泰坦尼克号', '阿凡达'],
-    ['西游记', '封神榜'],
-    ['哈利波特', '指环王'],
-  ],
-  '随机': [
-    ['雨伞', '雨衣'],
-    ['牙刷', '牙膏'],
-    ['镜子', '玻璃'],
-  ]
-};
+function _genLocalProfile(): Pick<Player, 'id' | 'name' | 'avatar'> {
+  const suffix = Math.floor(Math.random() * 9000 + 1000);
+  const seed = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return {
+    id: seed,
+    name: `玩家${suffix}`,
+    avatar: `https://api.dicebear.com/8.x/fun-emoji/png?seed=${encodeURIComponent(seed)}`,
+  };
+}
 
 const INITIAL_GAME_STATE: GameState = {
   roomId: '',
@@ -103,7 +72,7 @@ function clearActiveRoom() {
 }
 
 export default function App() {
-  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth'>('auth');
+  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin'>('auth');
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
   const [isVotingModalOpen, setIsVotingModalOpen] = useState(false);
@@ -116,6 +85,7 @@ export default function App() {
   const [mySecret, setMySecret] = useState<{ role: PlayerRole; word: string } | null>(null);
   const [roomPlayerId, setRoomPlayerId] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<ActiveRoom | null>(() => loadActiveRoom());
+  const [wordCategories, setWordCategories] = useState<string[]>(['随机']);
 
   const wsRef = useRef<WebSocket | null>(null);
   const myPlayerRef = useRef<Player | null>(null);
@@ -144,11 +114,11 @@ export default function App() {
       return myPlayerRef.current;
     }
 
-    const pick = MOCK_PLAYERS[Math.floor(Math.random() * MOCK_PLAYERS.length)];
+    const local = _genLocalProfile();
     const created: Player = {
-      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: pick.name,
-      avatar: pick.avatar,
+      id: local.id,
+      name: local.name,
+      avatar: local.avatar,
       status: 'active',
       isReady: false,
       isHost: false,
@@ -167,6 +137,13 @@ export default function App() {
     fetchMe()
       .then((u) => {
         setAuthMe(u);
+        listWordCategories()
+          .then((cats) => {
+            const names = (cats || []).map(c => c.name).filter(Boolean);
+            if (names.length > 0) setWordCategories(names);
+          })
+          .catch(() => {
+          });
         const ar = loadActiveRoom();
         setActiveRoom(ar);
         if (ar) {
@@ -244,6 +221,7 @@ export default function App() {
     setReactions(state.reactions || {});
 
     setRoomConfig({
+      roomName: state.roomName,
       playerCount: mappedPlayers.length,
       speakingTime: state.speakingTime,
       votingTime: state.votingTime,
@@ -275,6 +253,11 @@ export default function App() {
       if (msg.type === 'state') {
         applyBackendState(msg.payload as BackendRoomState);
       }
+      if (msg.type === 'room:closed') {
+        window.alert('房主已退出，房间已解散');
+        confirmExit();
+        return;
+      }
       if (msg.type === 'secret') {
         const payload = msg.payload as { playerId: string; role: PlayerRole; word: string };
         if (payload.playerId === playerId) {
@@ -303,7 +286,7 @@ export default function App() {
     if (view !== 'game') return;
     if (!isHost) return;
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-    if (gameState.phase !== '发言' && gameState.phase !== '投票') return;
+    if (gameState.phase !== '发言' && gameState.phase !== '投票' && gameState.phase !== '结果') return;
     if (!roomConfig) return;
 
     const interval = setInterval(() => {
@@ -331,6 +314,15 @@ export default function App() {
                 timer: roomConfig.votingTime,
               };
             }
+          } else if (prev.phase === '结果') {
+            const alivePlayers = players.filter(p => p.status !== 'eliminated');
+            next = {
+              ...prev,
+              phase: '发言',
+              round: prev.round + 1,
+              currentSpeakerId: alivePlayers[0]?.id || null,
+              timer: roomConfig.speakingTime,
+            };
           } else {
             next = prev;
           }
@@ -378,7 +370,7 @@ export default function App() {
       return;
     }
     const resp = await createRoom({
-      roomName: '秘密花园 #42',
+      roomName: (config.roomName || '').trim() || `${myPlayer.name}创建的房间`,
       maxPlayers: config.playerCount,
       config,
       host: { id: myPlayer.id, name: myPlayer.name, avatar: myPlayer.avatar },
@@ -415,8 +407,12 @@ export default function App() {
     setView('game');
   };
 
-  const handleVote = (playerId: string) => {
+  const handleVote = (playerId: string | null) => {
     const ws = wsRef.current;
+    const myId = roomPlayerId || myPlayer.id;
+    const me = players.find(p => p.id === myId) || null;
+    if (!me || me.status !== 'active') return;
+    if (gameState.phase !== '投票') return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       wsSendVote(ws, roomPlayerId || myPlayer.id, playerId);
     }
@@ -426,21 +422,38 @@ export default function App() {
 
   if (view === 'home') {
     return (
-      <HomeView 
-        onStartGame={handleStartGame} 
+      <HomeView
+        onStartGame={handleStartGame}
         onMatch={handleJoinRoom}
-        meName={authMe?.username || myPlayer.name}
-        meAvatar={authMe?.avatar || myPlayer.avatar}
+        meName={myPlayer.name}
+        meAvatar={myPlayer.avatar}
+        wordCategories={wordCategories}
+        onRefreshWordCategories={async () => {
+          const cats = await listWordCategories();
+          const names = (cats || []).map(c => c.name).filter(Boolean);
+          if (names.length > 0) setWordCategories(names);
+        }}
+        isAdmin={Boolean(authMe?.is_admin)}
+        onWordsAdmin={() => {
+          if (!authMe?.is_admin) {
+            window.alert('无权限');
+            return;
+          }
+          setView('words_admin');
+        }}
         activeRoomId={activeRoom?.roomId || null}
-        onResumeRoom={handleResumeRoom}
+        onResumeRoom={() => {
+          if (!activeRoom) return;
+          setRoomPlayerId(activeRoom.playerId);
+          connectWs(activeRoom.roomId, activeRoom.playerId);
+          setView('game');
+        }}
         onProfile={() => setView('profile')}
         onLogout={() => {
           clearToken();
-          setAuthMe(null);
-          setRoomPlayerId(null);
           clearActiveRoom();
           setActiveRoom(null);
-          myPlayerRef.current = null;
+          setAuthMe(null);
           setView('auth');
         }}
       />
@@ -450,40 +463,68 @@ export default function App() {
   if (view === 'auth') {
     return (
       <AuthView
-        onLoginSuccess={async () => {
-          const u = await fetchMe();
-          setAuthMe(u);
-          setView('home');
+        onLoginSuccess={() => {
+          fetchMe()
+            .then((u) => {
+              setAuthMe(u);
+              listWordCategories()
+                .then((cats) => {
+                  const names = (cats || []).map(c => c.name).filter(Boolean);
+                  if (names.length > 0) setWordCategories(names);
+                })
+                .catch(() => {
+                });
+              setView('home');
+            })
+            .catch(() => {
+              clearToken();
+              setView('auth');
+            });
         }}
-        onRegisterSuccess={async () => {
-          const u = await fetchMe();
-          setAuthMe(u);
+        onRegisterSuccess={() => {
+        }}
+      />
+    );
+  }
+
+  if (view === 'words_admin') {
+    return (
+      <WordsAdminView
+        onBack={() => {
+          listWordCategories()
+            .then((cats) => {
+              const names = (cats || []).map(c => c.name).filter(Boolean);
+              if (names.length > 0) setWordCategories(names);
+            })
+            .catch(() => {
+            });
           setView('home');
         }}
       />
     );
   }
 
-  if (view === 'profile') {
-    if (!authMe) {
-      setView('auth');
-      return null;
-    }
+  if (view === 'profile' && authMe) {
     return (
       <ProfileView
         me={authMe}
         onUpdated={(next) => {
           setAuthMe(next);
-          myPlayerRef.current = null;
+          localStorage.setItem('undercover_me', JSON.stringify({
+            id: next.id,
+            name: next.username,
+            avatar: next.avatar,
+            status: 'active',
+            isReady: false,
+            isHost: false,
+          }));
         }}
         onBack={() => setView('home')}
         onLogout={() => {
           clearToken();
-          setAuthMe(null);
-          setRoomPlayerId(null);
           clearActiveRoom();
           setActiveRoom(null);
-          myPlayerRef.current = null;
+          setAuthMe(null);
           setView('auth');
         }}
       />
@@ -492,14 +533,14 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-game-bg pb-32">
-      <TopBar 
+      <TopBar
         roomName={gameState.roomName}
         roomId={gameState.roomId}
         playerCount={gameState.playerCount}
         maxPlayers={gameState.maxPlayers}
         phase={gameState.phase}
         timer={gameState.timer}
-        onExit={handleExit}
+        onExit={confirmExit}
       />
 
       <main className="max-w-2xl mx-auto px-6">
@@ -512,7 +553,9 @@ export default function App() {
               className="flex flex-col items-center justify-center py-12 space-y-8"
             >
               <div className="text-center space-y-4">
-                <h2 className="text-3xl font-black text-slate-900">等待玩家准备...</h2>
+                <h2 className="text-3xl font-black text-slate-900">
+                  {players.length < gameState.maxPlayers ? '等待玩家进入...' : '等待玩家准备...'}
+                </h2>
                 <div className="flex items-center justify-center gap-2 px-6 py-3 bg-white rounded-2xl card-shadow">
                   <span className="text-slate-400 font-bold text-sm">房间号:</span>
                   <span className="text-primary font-black text-xl tracking-wider">{gameState.roomId}</span>
@@ -521,128 +564,6 @@ export default function App() {
                   已准备: {players.filter(p => p.isReady).length} / {players.length}
                 </p>
               </div>
-            </motion.div>
-          ) : gameState.phase === '结果' && eliminatedPlayer ? (
-            <motion.div
-              key="result"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center justify-center py-20 space-y-6"
-            >
-              <div className="w-32 h-32 rounded-full overflow-hidden border-8 border-primary shadow-2xl">
-                <img src={eliminatedPlayer.avatar} alt="" className="w-full h-full object-cover grayscale" referrerPolicy="no-referrer" />
-              </div>
-              <div className="text-center space-y-2">
-                <h2 className="text-3xl font-black text-slate-900">{eliminatedPlayer.name} 出局</h2>
-                <p className="text-xl font-bold text-primary">身份：{eliminatedPlayer.role}</p>
-              </div>
-            </motion.div>
-          ) : gameState.phase === '结束' ? (
-            <motion.div
-              key="end"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="flex flex-col items-center justify-center py-14 space-y-8"
-            >
-              {(() => {
-                const myId = roomPlayerId || myPlayer.id;
-                const me = players.find(p => p.id === myId) || null;
-                const myRole = me?.role || mySecret?.role || null;
-                const winner = gameState.winner || '平民';
-                const didWin = (winner === '平民' && myRole === '平民') || (winner === '卧底' && myRole === '卧底');
-                const winners = players.filter(p => p.role === winner);
-                const losers = players.filter(p => p.role && p.role !== winner);
-
-                return (
-                  <div className="w-full max-w-md space-y-6">
-                    <div
-                      className={
-                        `rounded-[40px] p-8 card-shadow border ${didWin ? 'bg-emerald-50 border-emerald-100' : 'bg-red-50 border-red-100'}`
-                      }
-                    >
-                      <div className="text-center space-y-2">
-                        <div
-                          className={
-                            `text-[12px] font-black tracking-widest uppercase ${didWin ? 'text-emerald-600' : 'text-red-600'}`
-                          }
-                        >
-                          {didWin ? 'Victory' : 'Defeat'}
-                        </div>
-                        <h2 className="text-4xl font-black text-slate-900">{winner} 获胜</h2>
-                        <div className="text-sm font-bold text-slate-500">你的身份：{myRole || '未知'}</div>
-                      </div>
-
-                      <div className="mt-6 grid grid-cols-2 gap-3">
-                        <div className="bg-white rounded-3xl p-4 border border-white/60">
-                          <div className="text-xs font-black text-slate-400 uppercase tracking-widest">胜方</div>
-                          <div className="mt-2 text-sm font-black text-slate-900">{winner}</div>
-                          <div className="mt-1 text-xs font-bold text-slate-400">{winners.length} 人</div>
-                        </div>
-                        <div className="bg-white rounded-3xl p-4 border border-white/60">
-                          <div className="text-xs font-black text-slate-400 uppercase tracking-widest">败方</div>
-                          <div className="mt-2 text-sm font-black text-slate-900">{winner === '平民' ? '卧底' : '平民'}</div>
-                          <div className="mt-1 text-xs font-bold text-slate-400">{losers.length} 人</div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="bg-white rounded-[40px] p-6 card-shadow space-y-4">
-                      <div className="text-xs font-black text-slate-400 uppercase tracking-widest">对局明细</div>
-
-                      <div className="space-y-3">
-                        <div className="text-sm font-black text-slate-900">胜方阵营</div>
-                        <div className="grid grid-cols-2 gap-3">
-                          {winners.map(p => (
-                            <div key={p.id} className="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
-                              <div className="w-10 h-10 rounded-2xl overflow-hidden bg-white border border-slate-100">
-                                <img
-                                  src={p.avatar}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-sm font-black text-slate-900 truncate">{p.name}</div>
-                                <div className="text-[10px] font-bold text-slate-400">{p.role}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="text-sm font-black text-slate-900 mt-2">败方阵营</div>
-                        <div className="grid grid-cols-2 gap-3">
-                          {losers.map(p => (
-                            <div key={p.id} className="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
-                              <div className="w-10 h-10 rounded-2xl overflow-hidden bg-white border border-slate-100">
-                                <img
-                                  src={p.avatar}
-                                  alt=""
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
-                              </div>
-                              <div className="min-w-0">
-                                <div className="text-sm font-black text-slate-900 truncate">{p.name}</div>
-                                <div className="text-[10px] font-bold text-slate-400">{p.role}</div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={confirmExit}
-                      className="w-full h-14 bg-primary text-white font-black rounded-3xl shadow-xl shadow-primary/20"
-                    >
-                      返回首页
-                    </button>
-                  </div>
-                );
-              })()}
             </motion.div>
           ) : (
             <motion.div
@@ -691,7 +612,13 @@ export default function App() {
 
       {gameState.phase !== '结束' && (
         <ActionBar 
-          onVoteClick={() => setIsVotingModalOpen(true)}
+          onVoteClick={() => {
+            const myId = roomPlayerId || myPlayer.id;
+            const me = players.find(p => p.id === myId) || null;
+            if (!me || me.status !== 'active') return;
+            if (gameState.phase !== '投票') return;
+            setIsVotingModalOpen(true);
+          }}
           onChatClick={() => setShowWord(!showWord)}
           onEmojiClick={() => setShowEmojiPicker({ show: true, targetId: roomPlayerId || myPlayer.id })}
           onReadyClick={() => {
@@ -708,7 +635,12 @@ export default function App() {
               wsSendStart(ws, roomPlayerId || myPlayer.id);
             }
           }}
-          canVote={gameState.phase === '投票'}
+          canVote={(() => {
+            if (gameState.phase !== '投票') return false;
+            const myId = roomPlayerId || myPlayer.id;
+            const me = players.find(p => p.id === myId) || null;
+            return Boolean(me && me.status === 'active');
+          })()}
           isLobby={gameState.phase === '大厅'}
           isReady={Boolean(players.find(p => p.id === (roomPlayerId || myPlayer.id))?.isReady)}
           isHost={isHost}

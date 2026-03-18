@@ -5,6 +5,8 @@ export type UserProfile = {
   phone: string;
   username: string;
   avatar: string;
+  role?: number;
+  is_admin?: boolean;
 };
 
 export type Captcha = {

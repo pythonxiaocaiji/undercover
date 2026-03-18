@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -13,6 +13,8 @@ class User(Base):
 
     phone: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+
+    role: Mapped[int] = mapped_column(Integer, default=1)
 
     username: Mapped[str] = mapped_column(String(32))
     avatar: Mapped[str] = mapped_column(String(255))
