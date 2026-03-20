@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Plus, Users, Clock, Tag, ChevronLeft, Sparkles } from 'lucide-react';
+import { Play, Plus, Users, Clock, Tag, ChevronLeft, Sparkles, HelpCircle } from 'lucide-react';
 import { RoomConfig } from '../types';
 import { cn } from '../lib/utils';
+import { useToast } from './Toast';
 
 interface HomeViewProps {
   onStartGame: (config: RoomConfig) => Promise<void>;
@@ -20,7 +21,9 @@ interface HomeViewProps {
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onProfile, onLogout }) => {
+  const { toast } = useToast();
   const [view, setView] = useState<'main' | 'create' | 'join'>('main');
+  const [showRules, setShowRules] = useState(false);
   const [joinRoomId, setJoinRoomId] = useState('');
   const [config, setConfig] = useState<RoomConfig>({
     roomName: `${meName}创建的房间`,
@@ -43,12 +46,14 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
     });
   }, [wordCategories]);
 
+  const refreshRef = useRef(onRefreshWordCategories);
+  refreshRef.current = onRefreshWordCategories;
+
   useEffect(() => {
     if (view !== 'create') return;
-    if (!onRefreshWordCategories) return;
-    onRefreshWordCategories().catch(() => {
-    });
-  }, [view, onRefreshWordCategories]);
+    refreshRef.current?.().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   useEffect(() => {
     if (view !== 'create') return;
@@ -64,7 +69,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
     try {
       await onMatch(joinRoomId);
     } catch (e: any) {
-      window.alert(String(e?.message || e));
+      toast('error', '加入失败', String(e?.message || e));
     }
   };
 
@@ -127,6 +132,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
               <p className="text-slate-400 font-medium">找出潜伏在我们之中的卧底</p>
             </div>
 
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setShowRules(true)}
+              className="flex items-center justify-center gap-2 text-sm font-bold text-slate-400 hover:text-primary transition-colors mx-auto"
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>游戏介绍与规则</span>
+            </motion.button>
+
             {activeRoomId && onResumeRoom && (
               <div className="bg-white rounded-[32px] p-4 card-shadow border border-slate-50 text-left">
                 <div className="text-slate-900 font-black">你已在房间 {activeRoomId}</div>
@@ -148,7 +163,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   if (activeRoomId) {
-                    window.alert(`你已在房间 ${activeRoomId} 中，请先返回该房间或退出后再创建新房间`);
+                    toast('warning', '无法创建房间', `你已在房间 ${activeRoomId} 中，请先返回或退出`);
                     return;
                   }
                   setView('create');
@@ -164,7 +179,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                 whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   if (activeRoomId) {
-                    window.alert(`你已在房间 ${activeRoomId} 中，请先返回该房间或退出后再加入新房间`);
+                    toast('warning', '无法加入房间', `你已在房间 ${activeRoomId} 中，请先返回或退出`);
                     return;
                   }
                   setView('join');
@@ -351,7 +366,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                   try {
                     await onStartGame(config);
                   } catch (e: any) {
-                    window.alert(String(e?.message || e));
+                    toast('error', '创建失败', String(e?.message || e));
                   }
                 }}
                 className="w-full h-14 sm:h-16 bg-primary text-white rounded-3xl font-black text-lg shadow-xl shadow-primary/20"
@@ -360,6 +375,82 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
               </motion.button>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 游戏规则弹窗 */}
+      <AnimatePresence>
+        {showRules && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowRules(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 30 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 30 }}
+              transition={{ type: 'spring', duration: 0.4 }}
+              className="relative w-full max-w-md max-h-[85vh] bg-white rounded-[32px] shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between p-6 pb-0">
+                <h2 className="text-xl font-black text-slate-900">游戏介绍与规则</h2>
+                <button
+                  onClick={() => setShowRules(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <span className="text-lg">🎭</span> 游戏简介
+                  </h3>
+                  <p className="text-sm font-medium text-slate-500 leading-relaxed">
+                    「谁是卧底」是一款经典的社交推理游戏。每位玩家会收到一个词语，其中大多数人（平民）拿到相同的词，少数人（卧底）拿到一个相近但不同的词。玩家需要通过描述自己的词语来找出卧底，而卧底则要伪装成平民存活下来。
+                  </p>
+                </div>
+                <div className="h-px bg-slate-100" />
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <span className="text-lg">📋</span> 游戏规则
+                  </h3>
+                  <ul className="text-sm font-medium text-slate-500 leading-relaxed space-y-2">
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">1.</span>房主创建房间，其他玩家通过房间号加入</li>
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">2.</span>所有玩家准备后，房主开始游戏，系统随机分配身份和词语</li>
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">3.</span>每轮按顺序发言，用语言描述自己的词语（不能直接说出词语）</li>
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">4.</span>发言结束后进入投票环节，投票选出你认为的卧底</li>
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">5.</span>得票最多的玩家被淘汰并揭示身份</li>
+                    <li className="flex items-start gap-2"><span className="text-primary font-black">6.</span>票数相同时进入 PK 轮，最多 3 轮后随机淘汰一人</li>
+                  </ul>
+                </div>
+                <div className="h-px bg-slate-100" />
+                <div className="space-y-2">
+                  <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                    <span className="text-lg">🏆</span> 胜负条件
+                  </h3>
+                  <ul className="text-sm font-medium text-slate-500 leading-relaxed space-y-2">
+                    <li className="flex items-start gap-2"><span className="text-blue-500 font-black">•</span><strong className="text-slate-700">平民胜利</strong>：所有卧底被投票淘汰</li>
+                    <li className="flex items-start gap-2"><span className="text-red-500 font-black">•</span><strong className="text-slate-700">卧底胜利</strong>：存活卧底人数 ≥ 存活平民人数</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50">
+                <button
+                  onClick={() => setShowRules(false)}
+                  className="w-full h-12 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20"
+                >
+                  我知道了
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>

@@ -27,3 +27,8 @@
     box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.08), 0 8px 16px -6px rgba(0, 0, 0, 0.04);
   }
 }
+
+@keyframes speaker-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+}

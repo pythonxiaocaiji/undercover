@@ -15,7 +15,6 @@ from app.ws.manager import manager
 
 router = APIRouter(prefix="/ws", tags=["ws"])
 
-
 _WORD_PAIRS: dict[str, list[tuple[str, str]]] = {
     "美食": [("包子", "饺子"), ("汉堡", "三明治"), ("火锅", "冒菜"), ("牛奶", "豆浆")],
     "动物": [("老虎", "狮子"), ("猫", "狗"), ("企鹅", "鸭子"), ("狼", "狐狸")],

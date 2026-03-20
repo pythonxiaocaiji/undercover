@@ -9,10 +9,11 @@ interface TopBarProps {
   maxPlayers: number;
   phase: GamePhase;
   timer: number;
+  round?: number;
   onExit?: () => void;
 }
 
-export const TopBar: React.FC<TopBarProps> = ({ roomName, roomId, playerCount, maxPlayers, phase, timer, onExit }) => {
+export const TopBar: React.FC<TopBarProps> = ({ roomName, roomId, playerCount, maxPlayers, phase, timer, round, onExit }) => {
   return (
     <div className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100">
       <div className="flex items-center gap-4">
@@ -46,7 +47,7 @@ export const TopBar: React.FC<TopBarProps> = ({ roomName, roomId, playerCount, m
           <span className={`text-[10px] uppercase tracking-widest font-bold ${
             phase === '投票' ? 'text-primary' : 'text-blue-accent'
           }`}>
-            {phase}阶段
+            {phase !== '大厅' && round ? `第${round}轮 · ` : ''}{phase}阶段
           </span>
           {phase !== '大厅' && (
             <div className="flex items-center gap-1.5 text-slate-900 font-bold">

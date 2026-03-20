@@ -52,23 +52,18 @@ export const VotingModal: React.FC<VotingModalProps> = ({ isOpen, onClose, playe
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[min(60vh,420px)] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 max-h-[min(60vh,420px)] overflow-y-auto pr-1 pt-3">
                 {players
                   .filter(p => p.status !== 'eliminated')
                   .filter(p => p.id !== myPlayerId)
                   .map(player => (
-                  <div key={player.id} className="relative">
+                  <div key={player.id}>
                     <PlayerCard
                       player={player}
                       isSelectable
                       isSelected={selectedId === player.id}
                       onClick={() => setSelectedId(player.id)}
                     />
-                    {player.votes && player.votes > 0 && (
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-primary text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-lg ring-2 ring-white">
-                        {player.votes}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

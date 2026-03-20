@@ -10,6 +10,7 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
 import { ProfileView } from './components/ProfileView';
 import { WordsAdminView } from './components/WordsAdminView';
+import { useToast } from './components/Toast';
 import { Player, GameState, RoomConfig, PlayerRole } from './types';
 import {
   BackendRoomState,
@@ -72,6 +73,7 @@ function clearActiveRoom() {
 }
 
 export default function App() {
+  const { toast } = useToast();
   const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin'>('auth');
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
@@ -229,6 +231,13 @@ export default function App() {
       undercoverCount: state.undercoverCount,
     });
 
+    if (state.eliminatedPlayerId) {
+      const ep = mappedPlayers.find(p => p.id === state.eliminatedPlayerId) || null;
+      setEliminatedPlayer(ep);
+    } else if (state.phase !== '结果') {
+      setEliminatedPlayer(null);
+    }
+
     setGameState(prev => ({
       ...prev,
       roomId: state.roomId,
@@ -251,12 +260,26 @@ export default function App() {
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       if (msg.type === 'state') {
-        applyBackendState(msg.payload as BackendRoomState);
+        const payload = msg.payload as BackendRoomState;
+        if (!payload || !payload.roomId || !payload.players || payload.players.length === 0) {
+          toast('warning', '房间不存在', '房间可能已过期或服务器已重启，已返回首页');
+          confirmExit();
+          return;
+        }
+        applyBackendState(payload);
       }
       if (msg.type === 'room:closed') {
-        window.alert('房主已退出，房间已解散');
+        toast('warning', '房间已解散', '房主已退出，房间已解散');
         confirmExit();
         return;
+      }
+      if (msg.type === 'error') {
+        const err = msg.error as string;
+        if (err === 'room_not_found') {
+          toast('warning', '房间不存在', '房间可能已过期，已返回首页');
+          confirmExit();
+          return;
+        }
       }
       if (msg.type === 'secret') {
         const payload = msg.payload as { playerId: string; role: PlayerRole; word: string };
@@ -275,6 +298,11 @@ export default function App() {
           });
         }, 3000);
       }
+    };
+
+    ws.onerror = () => {
+      toast('error', '连接失败', '无法连接到服务器，请稍后重试');
+      confirmExit();
     };
 
     ws.onclose = () => {
@@ -315,14 +343,18 @@ export default function App() {
               };
             }
           } else if (prev.phase === '结果') {
-            const alivePlayers = players.filter(p => p.status !== 'eliminated');
-            next = {
-              ...prev,
-              phase: '发言',
-              round: prev.round + 1,
-              currentSpeakerId: alivePlayers[0]?.id || null,
-              timer: roomConfig.speakingTime,
-            };
+            if (prev.winner) {
+              next = { ...prev, phase: '结束', timer: 0 };
+            } else {
+              const alivePlayers = players.filter(p => p.status !== 'eliminated');
+              next = {
+                ...prev,
+                phase: '发言',
+                round: prev.round + 1,
+                currentSpeakerId: alivePlayers[0]?.id || null,
+                timer: roomConfig.speakingTime,
+              };
+            }
           } else {
             next = prev;
           }
@@ -366,7 +398,7 @@ export default function App() {
   const handleStartGame = async (config: RoomConfig) => {
     const existing = activeRoom || loadActiveRoom();
     if (existing) {
-      window.alert(`你已在房间 ${existing.roomId} 中，请先返回该房间或退出后再创建新房间`);
+      toast('warning', '无法创建房间', `你已在房间 ${existing.roomId} 中，请先返回或退出后再创建`);
       return;
     }
     const resp = await createRoom({
@@ -386,7 +418,7 @@ export default function App() {
   const handleJoinRoom = async (roomId: string) => {
     const existing = activeRoom || loadActiveRoom();
     if (existing) {
-      window.alert(`你已在房间 ${existing.roomId} 中，请先返回该房间或退出后再加入新房间`);
+      toast('warning', '无法加入房间', `你已在房间 ${existing.roomId} 中，请先返回或退出后再加入`);
       return;
     }
     const resp = await joinRoom({ roomId, player: { id: myPlayer.id, name: myPlayer.name, avatar: myPlayer.avatar } });
@@ -418,6 +450,62 @@ export default function App() {
     }
   };
 
+  const handleSkipSpeaking = () => {
+    if (gameState.phase !== '发言') return;
+    const myId = roomPlayerId || myPlayer.id;
+    if (gameState.currentSpeakerId !== myId) return;
+    if (!roomConfig) return;
+
+    const activePlayers = players.filter(p => p.status === 'active');
+    const currentIndex = activePlayers.findIndex(p => p.id === myId);
+
+    let next: GameState;
+    if (currentIndex >= 0 && currentIndex < activePlayers.length - 1) {
+      next = {
+        ...gameState,
+        currentSpeakerId: activePlayers[currentIndex + 1].id,
+        timer: roomConfig.speakingTime,
+      };
+    } else {
+      next = {
+        ...gameState,
+        phase: '投票',
+        currentSpeakerId: null,
+        timer: roomConfig.votingTime,
+      };
+    }
+
+    setGameState(next);
+
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const backendState: BackendRoomState = {
+        roomId: gameState.roomId,
+        roomName: gameState.roomName,
+        maxPlayers: gameState.maxPlayers,
+        phase: next.phase,
+        timer: next.timer,
+        speakingTime: roomConfig.speakingTime,
+        votingTime: roomConfig.votingTime,
+        wordCategory: roomConfig.wordCategory,
+        undercoverCount: roomConfig.undercoverCount,
+        round: gameState.round,
+        currentSpeakerId: next.currentSpeakerId,
+        players: players.map(p => ({
+          id: p.id,
+          name: p.name,
+          avatar: p.avatar,
+          status: p.status,
+          isHost: p.isHost,
+          isReady: p.isReady,
+          votes: p.votes,
+        })),
+        reactions,
+      };
+      wsSendStateUpdate(ws, backendState);
+    }
+  };
+
   const currentSpeaker = players.find(p => p.id === gameState.currentSpeakerId) || null;
 
   if (view === 'home') {
@@ -436,7 +524,7 @@ export default function App() {
         isAdmin={Boolean(authMe?.is_admin)}
         onWordsAdmin={() => {
           if (!authMe?.is_admin) {
-            window.alert('无权限');
+            toast('error', '无权限', '仅管理员可访问词库管理');
             return;
           }
           setView('words_admin');
@@ -540,12 +628,14 @@ export default function App() {
         maxPlayers={gameState.maxPlayers}
         phase={gameState.phase}
         timer={gameState.timer}
-        onExit={confirmExit}
+        round={gameState.round}
+        onExit={handleExit}
       />
 
       <main className="max-w-2xl mx-auto px-6">
         <AnimatePresence mode="wait">
-          {gameState.phase === '大厅' ? (
+          {/* ——— 大厅阶段 ——— */}
+          {gameState.phase === '大厅' && (
             <motion.div
               key="lobby"
               initial={{ opacity: 0, y: 20 }}
@@ -565,7 +655,160 @@ export default function App() {
                 </p>
               </div>
             </motion.div>
-          ) : (
+          )}
+
+          {/* ——— 结果阶段（投票结果展示） ——— */}
+          {gameState.phase === '结果' && (
+            <motion.div
+              key="result"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="flex flex-col items-center justify-center py-10 space-y-6"
+            >
+              <div className="text-center space-y-3">
+                <div className="text-sm font-black text-slate-400 uppercase tracking-widest">投票结果</div>
+                {eliminatedPlayer ? (
+                  <>
+                    <div className="w-20 h-20 rounded-3xl overflow-hidden border-4 border-red-200 shadow-lg mx-auto">
+                      <img src={eliminatedPlayer.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-900">{eliminatedPlayer.name} 被淘汰</h2>
+                    {eliminatedPlayer.role && (
+                      <span className={`inline-block px-4 py-1.5 rounded-full text-sm font-black ${
+                        eliminatedPlayer.role === '卧底'
+                          ? 'bg-red-100 text-red-600'
+                          : 'bg-blue-100 text-blue-600'
+                      }`}>
+                        身份：{eliminatedPlayer.role}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-2xl font-black text-slate-900">本轮无人被淘汰</h2>
+                    <p className="text-slate-400 font-medium">全员弃票或票数相同</p>
+                  </>
+                )}
+                <p className="text-slate-400 font-bold text-sm">{gameState.timer}s 后进入下一轮</p>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ——— 结束阶段（游戏结算） ——— */}
+          {gameState.phase === '结束' && (
+            <motion.div
+              key="end"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center py-8 space-y-8"
+            >
+              <div className="text-center space-y-3">
+                <motion.div
+                  animate={{ rotate: [0, 10, -10, 0] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                  className={`w-20 h-20 rounded-[28px] flex items-center justify-center mx-auto border-4 border-white shadow-xl ${
+                    gameState.winner === '平民' ? 'bg-blue-100' : 'bg-red-100'
+                  }`}
+                >
+                  <span className="text-4xl">{gameState.winner === '平民' ? '🎉' : '🕵️'}</span>
+                </motion.div>
+                <h2 className="text-3xl font-black text-slate-900">
+                  {gameState.winner === '平民' ? '平民胜利！' : '卧底胜利！'}
+                </h2>
+                <p className="text-slate-400 font-medium">
+                  {gameState.winner === '平民' ? '所有卧底已被找出' : '卧底成功潜伏到最后'}
+                </p>
+              </div>
+
+              <div className="w-full space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">角色揭示</h3>
+                  <div className="h-px flex-1 bg-slate-100 ml-4" />
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {players.map(p => (
+                    <div
+                      key={p.id}
+                      className={`flex items-center gap-3 p-3 rounded-2xl border ${
+                        p.role === '卧底'
+                          ? 'bg-red-50 border-red-100'
+                          : 'bg-blue-50 border-blue-100'
+                      } ${p.status === 'eliminated' ? 'opacity-60' : ''}`}
+                    >
+                      <div className="w-10 h-10 rounded-xl overflow-hidden border-2 border-white shadow-sm flex-shrink-0">
+                        <img src={p.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-black text-slate-900 truncate">{p.name}</div>
+                        <div className={`text-xs font-bold ${p.role === '卧底' ? 'text-red-500' : 'text-blue-500'}`}>
+                          {p.role || '未知'}{p.status === 'eliminated' ? ' · 已淘汰' : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {isHost && (
+                <div className="w-full space-y-3 pt-2">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      const ws = wsRef.current;
+                      if (ws && ws.readyState === WebSocket.OPEN) {
+                        wsSendRestart(ws, roomPlayerId || myPlayer.id);
+                      }
+                    }}
+                    disabled={!players.every(p => p.isReady)}
+                    className="w-full h-14 bg-primary text-white rounded-3xl font-black text-lg shadow-xl shadow-primary/20 disabled:opacity-50 disabled:shadow-none"
+                  >
+                    再来一局
+                  </motion.button>
+                  {!players.every(p => p.isReady) && (
+                    <p className="text-center text-xs font-bold text-slate-400">等待所有玩家准备后可开始</p>
+                  )}
+                </div>
+              )}
+
+              {!isHost && (
+                <div className="w-full text-center space-y-3 pt-2">
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => {
+                      const ws = wsRef.current;
+                      const pid = roomPlayerId || myPlayer.id;
+                      const me = players.find(p => p.id === pid);
+                      if (ws && ws.readyState === WebSocket.OPEN) {
+                        wsSendReady(ws, pid, !me?.isReady);
+                      }
+                    }}
+                    className={`w-full h-14 rounded-3xl font-black text-lg shadow-xl ${
+                      players.find(p => p.id === (roomPlayerId || myPlayer.id))?.isReady
+                        ? 'bg-slate-200 text-slate-500 shadow-slate-200/20'
+                        : 'bg-emerald-500 text-white shadow-emerald-500/20'
+                    }`}
+                  >
+                    {players.find(p => p.id === (roomPlayerId || myPlayer.id))?.isReady ? '已准备 ✓' : '准备'}
+                  </motion.button>
+                  <p className="text-xs font-bold text-slate-400">等待房主发起下一局</p>
+                </div>
+              )}
+
+              <button
+                onClick={handleExit}
+                className="text-sm font-bold text-slate-400 hover:text-red-500 transition-colors"
+              >
+                退出房间
+              </button>
+            </motion.div>
+          )}
+
+          {/* ——— 发言/投票阶段 ——— */}
+          {(gameState.phase === '发言' || gameState.phase === '投票') && (
             <motion.div
               key={gameState.currentSpeakerId || 'none'}
               initial={{ opacity: 0, scale: 0.9 }}
@@ -577,12 +820,14 @@ export default function App() {
                 player={currentSpeaker} 
                 timer={gameState.timer} 
                 maxTimer={gameState.phase === '投票' ? (roomConfig?.votingTime || 30) : (roomConfig?.speakingTime || 30)} 
+                isMe={gameState.phase === '发言' && gameState.currentSpeakerId === (roomPlayerId || myPlayer.id)}
+                onSkip={handleSkipSpeaking}
               />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {gameState.phase !== '结束' && (
+        {(gameState.phase === '大厅' || gameState.phase === '发言' || gameState.phase === '投票' || gameState.phase === '结果') && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">

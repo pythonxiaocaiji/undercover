@@ -95,6 +95,10 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
             </span>
           )}
         </div>
+      ) : player.isSpeaking ? (
+        <div className="mt-1 text-[10px] font-black text-primary animate-pulse">
+          发言中
+        </div>
       ) : showSpeakingProgress ? (
         <div className={cn(
           "mt-1 text-[10px] font-black",

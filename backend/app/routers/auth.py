@@ -27,17 +27,14 @@ from app.schemas.auth import (
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-
 _PHONE_RE = re.compile(r"^1\d{10}$")
 _PASSWORD_COMPLEXITY_RE = re.compile(r"^(?=.*[A-Za-z])(?=.*\d).{6,}$")
-
 
 _DEFAULT_AVATARS = [
     "https://api.dicebear.com/8.x/bottts/png?seed=undercover",
     "https://api.dicebear.com/8.x/fun-emoji/png?seed=undercover",
     "https://api.dicebear.com/8.x/lorelei/png?seed=undercover",
 ]
-
 
 _MAX_AVATAR_BYTES = 5 * 1024 * 1024
 _ALLOWED_AVATAR_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp"}
@@ -178,10 +175,10 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
 
 @router.post("/avatar", response_model=ProfileResponse)
 async def upload_avatar(
-    request: Request,
-    file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+        request: Request,
+        file: UploadFile = File(...),
+        db: AsyncSession = Depends(get_db),
+        user: User = Depends(get_current_user),
 ):
     if file.content_type not in _ALLOWED_AVATAR_TYPES:
         raise HTTPException(status_code=415, detail="不支持的图片格式，仅支持 PNG/JPG/WebP")
@@ -246,14 +243,15 @@ async def me(user: User = Depends(get_current_user)):
 
 
 @router.put("/profile", response_model=ProfileResponse)
-async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depends(get_db),
+                         user: User = Depends(get_current_user)):
     updated = False
     if payload.username is not None:
         name = payload.username.strip()
         if not name:
-            raise HTTPException(status_code=422, detail="invalid_username")
+            raise HTTPException(status_code=422, detail="无效的用户名")
         if len(name) > 32:
-            raise HTTPException(status_code=422, detail="username_too_long")
+            raise HTTPException(status_code=422, detail="用户名称最大32位")
         user.username = name
         updated = True
 

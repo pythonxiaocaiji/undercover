@@ -124,12 +124,17 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
 async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = Depends(get_db)):
     room = await db.get(Room, room_id)
     if not room:
-        raise HTTPException(status_code=404, detail="room_not_found")
+        raise HTTPException(status_code=404, detail="房间不存在")
 
     state = await _get_room_state(room_id)
     players = state.get("players", [])
+
+    current_phase = state.get("phase", "大厅")
+    if current_phase != "大厅":
+        raise HTTPException(status_code=409, detail="游戏已开始，无法加入")
+
     if len(players) >= int(state.get("maxPlayers", room.max_players)):
-        raise HTTPException(status_code=409, detail="room_full")
+        raise HTTPException(status_code=409, detail="房间已满，无法加入")
 
     now = datetime.utcnow()
     scoped_player_id = f"{room_id}-{payload.player_id}"
@@ -173,7 +178,7 @@ async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = D
 async def get_state(room_id: str):
     state = await _get_room_state(room_id)
     if not state:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
     return state
 
 
@@ -181,7 +186,7 @@ async def get_state(room_id: str):
 async def set_ready(room_id: str, payload: ReadyRequest, db: AsyncSession = Depends(get_db)):
     state = await _get_room_state(room_id)
     if not state:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     players = state.get("players", [])
     updated = False
@@ -192,7 +197,7 @@ async def set_ready(room_id: str, payload: ReadyRequest, db: AsyncSession = Depe
             break
 
     if not updated:
-        raise HTTPException(status_code=404, detail="player_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     await _set_room_state(room_id, state)
     await manager.broadcast(room_id, {"type": "state", "payload": state})
@@ -212,14 +217,14 @@ async def set_ready(room_id: str, payload: ReadyRequest, db: AsyncSession = Depe
 async def update_state(room_id: str, payload: UpdateStateRequest):
     current = await _get_room_state(room_id)
     if not current:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     if not _is_host(current, payload.host_player_id):
         raise HTTPException(status_code=403, detail="not_host")
 
     next_state = payload.state or {}
     if next_state.get("roomId") and next_state.get("roomId") != room_id:
-        raise HTTPException(status_code=409, detail="room_id_mismatch")
+        raise HTTPException(status_code=409, detail="房间未找到")
 
     next_state["roomId"] = room_id
     await _set_room_state(room_id, next_state)
@@ -231,18 +236,18 @@ async def update_state(room_id: str, payload: UpdateStateRequest):
 async def start_game(room_id: str, payload: StartGameRequest):
     state = await _get_room_state(room_id)
     if not state:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     players = state.get("players", [])
     if not players:
-        raise HTTPException(status_code=409, detail="no_players")
+        raise HTTPException(status_code=409, detail="没有队员")
 
     host = next((p for p in players if p.get("id") == payload.host_player_id and p.get("isHost")), None)
     if not host:
         raise HTTPException(status_code=403, detail="not_host")
 
     if not all(p.get("isReady") for p in players):
-        raise HTTPException(status_code=409, detail="not_all_ready")
+        raise HTTPException(status_code=409, detail="有玩家未准备")
 
     state["phase"] = "发言"
     state["currentSpeakerId"] = players[0]["id"]
@@ -257,15 +262,15 @@ async def start_game(room_id: str, payload: StartGameRequest):
 async def vote(room_id: str, payload: VoteRequest):
     state = await _get_room_state(room_id)
     if not state:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     if state.get("phase") != "投票":
-        raise HTTPException(status_code=409, detail="not_in_voting_phase")
+        raise HTTPException(status_code=409, detail="尚未进入投票阶段")
 
     players = state.get("players", [])
     target = next((p for p in players if p.get("id") == payload.target_player_id), None)
     if not target:
-        raise HTTPException(status_code=404, detail="target_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     target["votes"] = int(target.get("votes", 0)) + 1
     await _set_room_state(room_id, state)
@@ -277,7 +282,7 @@ async def vote(room_id: str, payload: VoteRequest):
 async def reaction(room_id: str, payload: ReactionRequest):
     state = await _get_room_state(room_id)
     if not state:
-        raise HTTPException(status_code=404, detail="room_state_not_found")
+        raise HTTPException(status_code=404, detail="房间未找到")
 
     reactions = state.get("reactions", {})
     reactions[payload.target_player_id] = payload.emoji
