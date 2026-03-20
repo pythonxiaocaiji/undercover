@@ -42,6 +42,40 @@ _ALLOWED_AVATAR_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": 
 _CAPTCHA_TTL_SECONDS = 120
 
 
+def _avatar_to_storage(value: str | None) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" in v and "/uploads/" in v:
+        return "/uploads/" + v.split("/uploads/", 1)[1]
+    if v.startswith("/uploads/"):
+        return v
+    return v
+
+
+def _avatar_for_response(request: Request, value: str | None) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" in v and "/uploads/" in v:
+        v = "/uploads/" + v.split("/uploads/", 1)[1]
+    if v.startswith("/uploads/"):
+        base = str(request.base_url).rstrip("/")
+        return f"{base}{v}"
+    return v
+
+
+def _strip_base_if_matches_uploads(request: Request, value: str) -> str:
+    v = (value or "").strip()
+    if not v:
+        return ""
+    base = str(request.base_url).rstrip("/")
+    prefix = f"{base}/uploads/"
+    if v.startswith(prefix):
+        return "/uploads/" + v[len(prefix):]
+    return v
+
+
 def _gen_username(phone: str) -> str:
     suffix = phone[-4:] if phone and len(phone) >= 4 else f"{random.randint(0, 9999):04d}"
     return f"玩家{suffix}"
@@ -137,7 +171,7 @@ async def get_captcha():
 
 
 @router.post("/register", response_model=ProfileResponse)
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(request: Request, payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
     await _validate_captcha(payload.captcha_id, payload.captcha_code)
     _validate_phone(payload.phone)
     _validate_password(payload.password)
@@ -167,7 +201,7 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         id=user.id,
         phone=user.phone,
         username=user.username,
-        avatar=user.avatar,
+        avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
     )
@@ -196,9 +230,7 @@ async def upload_avatar(
     path = avatars_dir / name
     path.write_bytes(content)
 
-    base = str(request.base_url).rstrip("/")
-    url = f"{base}/uploads/avatars/{name}"
-    user.avatar = url
+    user.avatar = f"/uploads/avatars/{name}"
     user.updated_at = datetime.utcnow()
     await db.commit()
 
@@ -206,7 +238,7 @@ async def upload_avatar(
         id=user.id,
         phone=user.phone,
         username=user.username,
-        avatar=user.avatar,
+        avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
     )
@@ -231,19 +263,19 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=ProfileResponse)
-async def me(user: User = Depends(get_current_user)):
+async def me(request: Request, user: User = Depends(get_current_user)):
     return ProfileResponse(
         id=user.id,
         phone=user.phone,
         username=user.username,
-        avatar=user.avatar,
+        avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
     )
 
 
 @router.put("/profile", response_model=ProfileResponse)
-async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depends(get_db),
+async def update_profile(request: Request, payload: ProfileUpdateRequest, db: AsyncSession = Depends(get_db),
                          user: User = Depends(get_current_user)):
     updated = False
     if payload.username is not None:
@@ -256,11 +288,12 @@ async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depen
         updated = True
 
     if payload.avatar is not None:
-        avatar = payload.avatar.strip()
+        avatar = _strip_base_if_matches_uploads(request, payload.avatar)
+        avatar = avatar.strip()
         if not avatar:
             user.avatar = _pick_default_avatar(user.phone)
         else:
-            user.avatar = avatar
+            user.avatar = _avatar_to_storage(avatar)
         updated = True
 
     if updated:
@@ -271,7 +304,7 @@ async def update_profile(payload: ProfileUpdateRequest, db: AsyncSession = Depen
         id=user.id,
         phone=user.phone,
         username=user.username,
-        avatar=user.avatar,
+        avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
     )
