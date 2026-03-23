@@ -7,6 +7,7 @@ export type UserProfile = {
   avatar: string;
   role?: number;
   is_admin?: boolean;
+  user_status?: string;
 };
 
 export type Captcha = {

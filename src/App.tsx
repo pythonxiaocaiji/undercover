@@ -10,14 +10,23 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
 import { ProfileView } from './components/ProfileView';
 import { WordsAdminView } from './components/WordsAdminView';
+import { MessagesView } from './components/MessagesView';
+import { UserListView } from './components/UserListView';
 import { useToast } from './components/Toast';
-import { Player, GameState, RoomConfig, PlayerRole } from './types';
+import { FriendItem, Player, GameState, RoomConfig, PlayerRole } from './types';
 import {
   BackendRoomState,
+  clearRoomInvites,
+  connectNotifyWs,
   connectRoomWs,
   createRoom,
+  inviteFriendToRoom,
   joinRoom,
+  listFriends,
+  listFriendRequests,
+  listRoomInvites,
   listWordCategories,
+  updateUserStatus,
   wsSendReaction,
   wsSendRestart,
   wsSendReady,
@@ -47,10 +56,29 @@ const INITIAL_GAME_STATE: GameState = {
   timer: 30,
   currentSpeakerId: null,
   round: 1,
+  allowJoin: true,
+  allowInvite: true,
 };
 
 type ActiveRoom = { roomId: string; playerId: string };
 const ACTIVE_ROOM_KEY = 'undercover_active_room';
+const READ_FRIEND_REQUEST_IDS_KEY = 'undercover_read_friend_request_ids';
+const READ_ROOM_INVITE_KEYS_KEY = 'undercover_read_room_invite_keys';
+
+function loadStringArray(key: string): string[] {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStringArray(key: string, values: string[]) {
+  localStorage.setItem(key, JSON.stringify(Array.from(new Set(values))));
+}
 
 function loadActiveRoom(): ActiveRoom | null {
   try {
@@ -74,22 +102,34 @@ function clearActiveRoom() {
 
 export default function App() {
   const { toast } = useToast();
-  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin'>('auth');
+  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin' | 'messages' | 'users'>('auth');
+  const [userStatus, setUserStatus] = useState<'online' | 'busy'>('online');
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
   const [isVotingModalOpen, setIsVotingModalOpen] = useState(false);
   const [roomConfig, setRoomConfig] = useState<RoomConfig | null>(null);
   const [showWord, setShowWord] = useState(false);
+  const showWordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [eliminatedPlayer, setEliminatedPlayer] = useState<Player | null>(null);
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const [showEmojiPicker, setShowEmojiPicker] = useState<{ show: boolean; targetId: string | null }>({ show: false, targetId: null });
+  const [showInviteFriends, setShowInviteFriends] = useState(false);
+  const [friends, setFriends] = useState<FriendItem[]>([]);
+  const [pendingFriendRequests, setPendingFriendRequests] = useState(0);
+  const [pendingRoomInvites, setPendingRoomInvites] = useState(0);
+  const [latestInviteRoomId, setLatestInviteRoomId] = useState<string | null>(null);
   const [mySecret, setMySecret] = useState<{ role: PlayerRole; word: string } | null>(null);
   const [roomPlayerId, setRoomPlayerId] = useState<string | null>(null);
   const [activeRoom, setActiveRoom] = useState<ActiveRoom | null>(() => loadActiveRoom());
-  const [wordCategories, setWordCategories] = useState<string[]>(['随机']);
+  const [wordCategories, setWordCategories] = useState<string[]>(['全部']);
+  const [wsDisconnected, setWsDisconnected] = useState(false);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalCloseRef = useRef(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const notifyWsRef = useRef<WebSocket | null>(null);
+  const notifyPingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const myPlayerRef = useRef<Player | null>(null);
 
   const [authMe, setAuthMe] = useState<UserProfile | null>(null);
@@ -142,7 +182,7 @@ export default function App() {
         listWordCategories()
           .then((cats) => {
             const names = (cats || []).map(c => c.name).filter(Boolean);
-            if (names.length > 0) setWordCategories(names);
+            if (names.length > 0) setWordCategories(['全部', ...names]);
           })
           .catch(() => {
           });
@@ -161,6 +201,77 @@ export default function App() {
         setView('auth');
       });
   }, []);
+
+  const refreshHomeNotifications = async () => {
+    const results = await Promise.allSettled([listFriendRequests(), listRoomInvites()]);
+    const reqs = results[0].status === 'fulfilled' ? results[0].value : [];
+    const invites = results[1].status === 'fulfilled' ? results[1].value : [];
+    const readFriendRequestIds = new Set(loadStringArray(READ_FRIEND_REQUEST_IDS_KEY));
+    const readInviteKeys = new Set(loadStringArray(READ_ROOM_INVITE_KEYS_KEY));
+    const incomingReqs = reqs.filter((r) => r.is_incoming);
+    const unreadReqs = incomingReqs.filter((r) => !readFriendRequestIds.has(r.request_id));
+    const unreadInvites = invites.filter((i) => !readInviteKeys.has(`${i.room_id}:${i.inviter_user_id}`));
+    setPendingFriendRequests(unreadReqs.length);
+    setPendingRoomInvites(unreadInvites.length);
+    setLatestInviteRoomId(unreadInvites[0]?.room_id || null);
+  };
+
+  const connectNotifyWebSocket = (userId: string) => {
+    if (notifyWsRef.current) {
+      notifyWsRef.current.close();
+      notifyWsRef.current = null;
+    }
+    if (notifyPingRef.current) { clearInterval(notifyPingRef.current); notifyPingRef.current = null; }
+    const ws = connectNotifyWs(userId);
+    notifyWsRef.current = ws;
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data);
+        if (msg.type === 'friend_request') {
+          setPendingFriendRequests((prev) => prev + 1);
+        } else if (msg.type === 'room_invite') {
+          const invite = msg.payload;
+          setPendingRoomInvites((prev) => prev + 1);
+          setLatestInviteRoomId((prev) => prev || invite?.room_id || null);
+        }
+      } catch { /* ignore */ }
+    };
+    ws.onclose = () => {
+      setTimeout(() => {
+        if (notifyWsRef.current === ws && authMe) connectNotifyWebSocket(userId);
+      }, 3000);
+    };
+    notifyPingRef.current = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+    }, 25000);
+  };
+
+  useEffect(() => {
+    if (!authMe) return;
+    setUserStatus((authMe.user_status as 'online' | 'busy') || 'online');
+    connectNotifyWebSocket(authMe.id);
+    refreshHomeNotifications().catch(() => {});
+    return () => {
+      if (notifyWsRef.current) { notifyWsRef.current.close(); notifyWsRef.current = null; }
+      if (notifyPingRef.current) { clearInterval(notifyPingRef.current); notifyPingRef.current = null; }
+    };
+  }, [authMe?.id]);
+
+  const markFriendRequestsAsRead = async () => {
+    const reqs = await listFriendRequests();
+    const incomingIds = reqs.filter((r) => r.is_incoming).map((r) => r.request_id);
+    saveStringArray(READ_FRIEND_REQUEST_IDS_KEY, [...loadStringArray(READ_FRIEND_REQUEST_IDS_KEY), ...incomingIds]);
+    setPendingFriendRequests(0);
+  };
+
+  const markInvitesAsRead = async () => {
+    const invites = await listRoomInvites();
+    const inviteKeys = invites.map((i) => `${i.room_id}:${i.inviter_user_id}`);
+    saveStringArray(READ_ROOM_INVITE_KEYS_KEY, [...loadStringArray(READ_ROOM_INVITE_KEYS_KEY), ...inviteKeys]);
+    await clearRoomInvites();
+    setPendingRoomInvites(0);
+    setLatestInviteRoomId(null);
+  };
 
   const isHost = useMemo(() => {
     const pid = roomPlayerId || myPlayer.id;
@@ -181,10 +292,13 @@ export default function App() {
 
   const confirmExit = () => {
     setIsExitConfirmOpen(false);
+    intentionalCloseRef.current = true;
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
     }
+    setWsDisconnected(false);
     clearActiveRoom();
     setActiveRoom(null);
     setRoomPlayerId(null);
@@ -229,6 +343,8 @@ export default function App() {
       votingTime: state.votingTime,
       wordCategory: state.wordCategory,
       undercoverCount: state.undercoverCount,
+      allowJoin: Boolean(state.allowJoin ?? true),
+      allowInvite: Boolean(state.allowInvite ?? true),
     });
 
     if (state.eliminatedPlayerId) {
@@ -249,13 +365,21 @@ export default function App() {
       currentSpeakerId: state.currentSpeakerId,
       round: state.round,
       winner: state.winner,
+      allowJoin: Boolean(state.allowJoin ?? true),
+      allowInvite: Boolean(state.allowInvite ?? true),
     }));
   };
 
   const connectWs = (roomId: string, playerId: string) => {
-    if (wsRef.current) wsRef.current.close();
+    intentionalCloseRef.current = false;
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+    if (wsRef.current) { wsRef.current.close(); }
     const ws = connectRoomWs(roomId, playerId);
     wsRef.current = ws;
+
+    ws.onopen = () => {
+      setWsDisconnected(false);
+    };
 
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
@@ -266,9 +390,11 @@ export default function App() {
           confirmExit();
           return;
         }
+        setWsDisconnected(false);
         applyBackendState(payload);
       }
       if (msg.type === 'room:closed') {
+        intentionalCloseRef.current = true;
         toast('warning', '房间已解散', '房主已退出，房间已解散');
         confirmExit();
         return;
@@ -276,6 +402,7 @@ export default function App() {
       if (msg.type === 'error') {
         const err = msg.error as string;
         if (err === 'room_not_found') {
+          intentionalCloseRef.current = true;
           toast('warning', '房间不存在', '房间可能已过期，已返回首页');
           confirmExit();
           return;
@@ -300,13 +427,18 @@ export default function App() {
       }
     };
 
-    ws.onerror = () => {
-      toast('error', '连接失败', '无法连接到服务器，请稍后重试');
-      confirmExit();
-    };
+    ws.onerror = () => {};
 
     ws.onclose = () => {
       if (wsRef.current === ws) wsRef.current = null;
+      if (intentionalCloseRef.current) return;
+      const ar = loadActiveRoom();
+      if (!ar) return;
+      setWsDisconnected(true);
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        connectWs(ar.roomId, ar.playerId);
+      }, 3000);
     };
   };
 
@@ -372,6 +504,8 @@ export default function App() {
             votingTime: roomConfig.votingTime,
             wordCategory: roomConfig.wordCategory,
             undercoverCount: roomConfig.undercoverCount,
+            allowJoin: roomConfig.allowJoin,
+            allowInvite: roomConfig.allowInvite,
             round: prev.round,
             currentSpeakerId: next.currentSpeakerId,
             players: players.map(p => ({
@@ -489,6 +623,8 @@ export default function App() {
         votingTime: roomConfig.votingTime,
         wordCategory: roomConfig.wordCategory,
         undercoverCount: roomConfig.undercoverCount,
+        allowJoin: roomConfig.allowJoin,
+        allowInvite: roomConfig.allowInvite,
         round: gameState.round,
         currentSpeakerId: next.currentSpeakerId,
         players: players.map(p => ({
@@ -519,7 +655,7 @@ export default function App() {
         onRefreshWordCategories={async () => {
           const cats = await listWordCategories();
           const names = (cats || []).map(c => c.name).filter(Boolean);
-          if (names.length > 0) setWordCategories(names);
+          if (names.length > 0) setWordCategories(['全部', ...names]);
         }}
         isAdmin={Boolean(authMe?.is_admin)}
         onWordsAdmin={() => {
@@ -535,6 +671,29 @@ export default function App() {
           setRoomPlayerId(activeRoom.playerId);
           connectWs(activeRoom.roomId, activeRoom.playerId);
           setView('game');
+        }}
+        userStatus={userStatus}
+        onStatusChange={async (s) => {
+          setUserStatus(s);
+          await updateUserStatus(s).catch(() => {});
+        }}
+        onUsers={() => setView('users')}
+        onFriends={async () => {
+          if (pendingFriendRequests > 0) {
+            await markFriendRequestsAsRead();
+          }
+          if (pendingRoomInvites > 0) {
+            await markInvitesAsRead();
+          }
+          setView('messages');
+        }}
+        pendingFriendRequests={pendingFriendRequests}
+        pendingRoomInvites={pendingRoomInvites}
+        latestInviteRoomId={latestInviteRoomId}
+        onJoinLatestInvite={async () => {
+          if (!latestInviteRoomId) return;
+          await handleJoinRoom(latestInviteRoomId);
+          await markInvitesAsRead();
         }}
         onProfile={() => setView('profile')}
         onLogout={() => {
@@ -558,7 +717,7 @@ export default function App() {
               listWordCategories()
                 .then((cats) => {
                   const names = (cats || []).map(c => c.name).filter(Boolean);
-                  if (names.length > 0) setWordCategories(names);
+                  if (names.length > 0) setWordCategories(['全部', ...names]);
                 })
                 .catch(() => {
                 });
@@ -582,12 +741,32 @@ export default function App() {
           listWordCategories()
             .then((cats) => {
               const names = (cats || []).map(c => c.name).filter(Boolean);
-              if (names.length > 0) setWordCategories(names);
+              if (names.length > 0) setWordCategories(['全部', ...names]);
             })
             .catch(() => {
             });
           setView('home');
         }}
+      />
+    );
+  }
+
+  if (view === 'messages') {
+    return (
+      <MessagesView
+        onBack={() => setView('home')}
+        onJoinInvite={async (roomId) => {
+          await handleJoinRoom(roomId);
+          await markInvitesAsRead();
+        }}
+      />
+    );
+  }
+
+  if (view === 'users') {
+    return (
+      <UserListView
+        onBack={() => setView('home')}
       />
     );
   }
@@ -833,7 +1012,25 @@ export default function App() {
               <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
                 玩家列表
               </h3>
-              <div className="h-px flex-1 bg-slate-100 ml-4" />
+              <div className="flex items-center gap-3 flex-1 ml-4">
+                <div className="h-px flex-1 bg-slate-100" />
+                {gameState.phase === '大厅' && (isHost || gameState.allowInvite !== false) && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const next = await listFriends();
+                        setFriends(next);
+                        setShowInviteFriends(true);
+                      } catch (e: any) {
+                        toast('error', '加载好友失败', String(e?.message || e));
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-white card-shadow text-xs font-black text-primary"
+                  >
+                    邀请好友
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -864,7 +1061,16 @@ export default function App() {
             if (gameState.phase !== '投票') return;
             setIsVotingModalOpen(true);
           }}
-          onChatClick={() => setShowWord(!showWord)}
+          onChatClick={() => {
+            if (showWordTimerRef.current) { clearTimeout(showWordTimerRef.current); showWordTimerRef.current = null; }
+            setShowWord(prev => {
+              const next = !prev;
+              if (next) {
+                showWordTimerRef.current = setTimeout(() => { setShowWord(false); showWordTimerRef.current = null; }, 5000);
+              }
+              return next;
+            });
+          }}
           onEmojiClick={() => setShowEmojiPicker({ show: true, targetId: roomPlayerId || myPlayer.id })}
           onReadyClick={() => {
             const ws = wsRef.current;
@@ -944,6 +1150,108 @@ export default function App() {
           >
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">你的词语</span>
             <span className="text-2xl font-black text-primary">{mySecret?.word || ''}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showInviteFriends && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowInviteFriends(false)}
+              className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="fixed inset-x-4 top-1/2 -translate-y-1/2 z-50 max-w-md mx-auto bg-white rounded-[32px] border border-slate-100 shadow-2xl p-5 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-slate-900">邀请好友</h3>
+                  <p className="text-xs font-bold text-slate-400 mt-1">仅可邀请你的好友加入当前房间</p>
+                </div>
+                <button onClick={() => setShowInviteFriends(false)} className="text-slate-400 hover:text-slate-700 text-sm font-black">关闭</button>
+              </div>
+              <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+                {friends.length === 0 && (
+                  <div className="text-sm font-medium text-slate-400">你还没有可邀请的好友</div>
+                )}
+                {friends.map((friend) => (
+                  <div key={friend.user_id} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50">
+                    <img src={friend.avatar} alt="" className="w-12 h-12 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-black text-slate-900 truncate">{friend.username}</div>
+                      <div className="text-xs font-bold text-slate-400">{friend.phone}</div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await inviteFriendToRoom(gameState.roomId, friend.user_id);
+                          toast('success', '邀请已发送', `已邀请 ${friend.username}`);
+                        } catch (e: any) {
+                          toast('error', '邀请失败', String(e?.message || e));
+                        }
+                      }}
+                      className="px-3 py-2 bg-primary text-white rounded-xl text-xs font-black"
+                    >
+                      邀请
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* Disconnected Overlay */}
+      <AnimatePresence>
+        {wsDisconnected && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-3xl p-8 mx-6 max-w-sm w-full text-center shadow-2xl space-y-4"
+            >
+              <div className="w-16 h-16 mx-auto rounded-full bg-yellow-100 flex items-center justify-center">
+                <span className="text-3xl">📡</span>
+              </div>
+              <h2 className="text-xl font-black text-slate-900">连接已断开</h2>
+              <p className="text-sm text-slate-400 font-medium">正在尝试重新连接...</p>
+              <div className="flex items-center justify-center gap-1.5 py-2">
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    const ar = loadActiveRoom();
+                    if (ar) connectWs(ar.roomId, ar.playerId);
+                  }}
+                  className="flex-1 h-12 bg-primary text-white rounded-2xl font-black shadow-lg shadow-primary/20"
+                >
+                  立即重连
+                </button>
+                <button
+                  onClick={confirmExit}
+                  className="flex-1 h-12 bg-slate-100 text-slate-500 rounded-2xl font-black"
+                >
+                  退出房间
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

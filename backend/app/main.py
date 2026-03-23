@@ -10,10 +10,12 @@ from app.core.config import settings
 from app.db.session import engine
 from app.db.base import Base
 from app.redis.client import redis_client
-from app.routers import auth, health, rooms, ws, words
+from app.routers import auth, friends, health, rooms, users, ws, words
+from app.models.friend import Friend
 from app.models.user import User
 from app.models.word_category import WordCategory
 from app.models.word_pair import WordPair
+from app.models.room import Room
 
 
 @asynccontextmanager
@@ -31,6 +33,30 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text("ALTER TABLE users ADD COLUMN role INT NOT NULL DEFAULT 1"))
         except Exception:
             # Ignore startup migration failure; DB might be read-only or using a different dialect.
+            pass
+
+        try:
+            res = await conn.execute(text("SHOW COLUMNS FROM rooms LIKE 'allow_join'"))
+            has_allow_join = res.first() is not None
+            if not has_allow_join:
+                await conn.execute(text("ALTER TABLE rooms ADD COLUMN allow_join INT NOT NULL DEFAULT 1"))
+        except Exception:
+            pass
+
+        try:
+            res = await conn.execute(text("SHOW COLUMNS FROM rooms LIKE 'allow_invite'"))
+            has_allow_invite = res.first() is not None
+            if not has_allow_invite:
+                await conn.execute(text("ALTER TABLE rooms ADD COLUMN allow_invite INT NOT NULL DEFAULT 1"))
+        except Exception:
+            pass
+
+        try:
+            res = await conn.execute(text("SHOW COLUMNS FROM users LIKE 'user_status'"))
+            has_user_status = res.first() is not None
+            if not has_user_status:
+                await conn.execute(text("ALTER TABLE users ADD COLUMN user_status VARCHAR(20) NOT NULL DEFAULT 'online'"))
+        except Exception:
             pass
 
         # Bootstrap admins from env into DB role
@@ -59,6 +85,7 @@ app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
+    allow_origin_regex=settings.cors_origin_regex_value,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,6 +93,8 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(auth.router)
+app.include_router(friends.router)
 app.include_router(rooms.router)
+app.include_router(users.router)
 app.include_router(ws.router)
 app.include_router(words.router)

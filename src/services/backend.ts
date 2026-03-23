@@ -1,4 +1,4 @@
-import type { GameState, Player, RoomConfig } from '../types';
+import type { FriendItem, GameState, Player, RoomConfig, RoomInviteItem, UserPublicItem } from '../types';
 
 function authHeaders() {
   const token = localStorage.getItem('undercover_token');
@@ -15,6 +15,8 @@ export type BackendRoomState = {
   votingTime: number;
   wordCategory: string;
   undercoverCount: number;
+  allowJoin?: boolean;
+  allowInvite?: boolean;
   round: number;
   currentSpeakerId: string | null;
   votesBy?: Record<string, string>;
@@ -81,6 +83,8 @@ export async function createRoom(params: {
       voting_time: params.config.votingTime,
       word_category: params.config.wordCategory,
       undercover_count: params.config.undercoverCount,
+      allow_join: params.config.allowJoin,
+      allow_invite: params.config.allowInvite,
       host_player_id: params.host.id,
       host_player_name: params.host.name,
       host_avatar: params.host.avatar,
@@ -186,4 +190,109 @@ export async function adminDeleteWordPair(pairId: string): Promise<void> {
     headers: { ...authHeaders() },
   });
   await throwIfNotOk(res);
+}
+
+export async function listFriends(): Promise<FriendItem[]> {
+  const res = await fetch(`${httpBaseUrl()}/friends`, {
+    method: 'GET',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function listFriendRequests(): Promise<FriendItem[]> {
+  const res = await fetch(`${httpBaseUrl()}/friends/requests`, {
+    method: 'GET',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function sendFriendRequest(targetPhone: string): Promise<FriendItem> {
+  const res = await fetch(`${httpBaseUrl()}/friends/request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ target_phone: targetPhone }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function acceptFriendRequest(requestId: string): Promise<FriendItem> {
+  const res = await fetch(`${httpBaseUrl()}/friends/accept`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ request_id: requestId }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function rejectFriendRequest(requestId: string): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/friends/reject`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ request_id: requestId }),
+  });
+  await throwIfNotOk(res);
+}
+
+export async function removeFriend(friendUserId: string): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/friends/${encodeURIComponent(friendUserId)}`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+}
+
+export async function listRoomInvites(): Promise<RoomInviteItem[]> {
+  const res = await fetch(`${httpBaseUrl()}/friends/invites`, {
+    method: 'GET',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function clearRoomInvites(): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/friends/invites`, {
+    method: 'DELETE',
+    headers: { ...authHeaders() },
+  });
+  await throwIfNotOk(res);
+}
+
+export async function inviteFriendToRoom(roomId: string, friendUserId: string): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/rooms/${encodeURIComponent(roomId)}/invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ friend_user_id: friendUserId }),
+  });
+  await throwIfNotOk(res);
+}
+
+export async function updateUserStatus(status: 'online' | 'busy'): Promise<void> {
+  const res = await fetch(`${httpBaseUrl()}/auth/status`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ status }),
+  });
+  await throwIfNotOk(res);
+}
+
+export async function listUsers(q?: string): Promise<UserPublicItem[]> {
+  const url = q?.trim()
+    ? `${httpBaseUrl()}/users?q=${encodeURIComponent(q.trim())}`
+    : `${httpBaseUrl()}/users`;
+  const res = await fetch(url, { method: 'GET', headers: { ...authHeaders() } });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export function connectNotifyWs(userId: string): WebSocket {
+  const token = localStorage.getItem('undercover_token') || '';
+  const url = `${wsBaseUrl()}/ws/notify/${encodeURIComponent(userId)}?token=${encodeURIComponent(token)}`;
+  return new WebSocket(url);
 }

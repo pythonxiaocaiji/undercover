@@ -37,6 +37,11 @@ class ProfileResponse(BaseModel):
     avatar: str
     role: int = 1
     is_admin: bool = False
+    user_status: str = "online"
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str
 
 
 class CaptchaResponse(BaseModel):

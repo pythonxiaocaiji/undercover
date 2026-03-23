@@ -18,6 +18,7 @@ class User(Base):
 
     username: Mapped[str] = mapped_column(String(32))
     avatar: Mapped[str] = mapped_column(String(255))
+    user_status: Mapped[str] = mapped_column(String(20), default="online")
 
     phone_verified_at: Mapped[DateTime | None] = mapped_column(DateTime, nullable=True)
 

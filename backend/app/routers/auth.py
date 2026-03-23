@@ -22,6 +22,7 @@ from app.schemas.auth import (
     ProfileResponse,
     ProfileUpdateRequest,
     RegisterRequest,
+    StatusUpdateRequest,
     TokenResponse,
 )
 
@@ -204,6 +205,7 @@ async def register(request: Request, payload: RegisterRequest, db: AsyncSession 
         avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
+        user_status=str(getattr(user, "user_status", "online") or "online"),
     )
 
 
@@ -241,6 +243,7 @@ async def upload_avatar(
         avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
+        user_status=str(getattr(user, "user_status", "online") or "online"),
     )
 
 
@@ -271,7 +274,23 @@ async def me(request: Request, user: User = Depends(get_current_user)):
         avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
+        user_status=str(getattr(user, "user_status", "online") or "online"),
     )
+
+
+@router.put("/status")
+async def update_user_status(
+    payload: StatusUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    allowed = {"online", "busy"}
+    if payload.status not in allowed:
+        raise HTTPException(status_code=422, detail="无效状态，仅支持 online / busy")
+    user.user_status = payload.status
+    user.updated_at = datetime.utcnow()
+    await db.commit()
+    return {"ok": True, "status": payload.status}
 
 
 @router.put("/profile", response_model=ProfileResponse)
@@ -307,4 +326,5 @@ async def update_profile(request: Request, payload: ProfileUpdateRequest, db: As
         avatar=_avatar_for_response(request, user.avatar),
         role=int(getattr(user, "role", 1) or 1),
         is_admin=_is_admin_user(user),
+        user_status=str(getattr(user, "user_status", "online") or "online"),
     )

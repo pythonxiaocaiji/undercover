@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Play, Plus, Users, Clock, Tag, ChevronLeft, Sparkles, HelpCircle } from 'lucide-react';
+import { Play, Plus, Users, Clock, Tag, ChevronLeft, Sparkles, HelpCircle, UserSearch } from 'lucide-react';
 import { RoomConfig } from '../types';
 import { cn } from '../lib/utils';
 import { useToast } from './Toast';
@@ -16,11 +16,19 @@ interface HomeViewProps {
   onWordsAdmin?: () => void;
   activeRoomId?: string | null;
   onResumeRoom?: () => void;
+  onFriends?: () => void;
+  pendingFriendRequests?: number;
+  pendingRoomInvites?: number;
+  latestInviteRoomId?: string | null;
+  onJoinLatestInvite?: () => void;
+  userStatus?: 'online' | 'busy';
+  onStatusChange?: (status: 'online' | 'busy') => void;
+  onUsers?: () => void;
   onProfile: () => void;
   onLogout: () => void;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onProfile, onLogout }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onFriends, pendingFriendRequests, pendingRoomInvites, latestInviteRoomId, onJoinLatestInvite, userStatus, onStatusChange, onUsers, onProfile, onLogout }) => {
   const { toast } = useToast();
   const [view, setView] = useState<'main' | 'create' | 'join'>('main');
   const [showRules, setShowRules] = useState(false);
@@ -32,6 +40,8 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
     votingTime: 30,
     wordCategory: wordCategories?.[0] || '随机',
     undercoverCount: 2,
+    allowJoin: true,
+    allowInvite: true,
   });
   const times = [30, 60, 90];
 
@@ -96,27 +106,67 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
             exit={{ opacity: 0, y: -20 }}
             className="w-full max-w-md space-y-12 text-center"
           >
-            <div className="flex items-center justify-between bg-white rounded-[32px] p-4 card-shadow border border-slate-50">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-slate-50">
-                  <img src={meAvatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+            <div className="bg-white rounded-[32px] p-4 card-shadow border border-slate-50 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-white shadow-sm bg-slate-50">
+                    <img src={meAvatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-slate-900 font-black leading-tight">{meName}</div>
+                    <button onClick={onProfile} className="text-xs font-bold text-slate-400 hover:text-slate-600">
+                      设置用户名/头像
+                    </button>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <div className="text-slate-900 font-black leading-tight">{meName}</div>
-                  <button onClick={onProfile} className="text-xs font-bold text-slate-400 hover:text-slate-600">
-                    设置用户名/头像
+                <div className="flex items-center gap-2">
+                  {isAdmin && onWordsAdmin && (
+                    <button onClick={onWordsAdmin} className="text-xs font-black text-primary hover:brightness-110">
+                      词库
+                    </button>
+                  )}
+                  <button onClick={onLogout} className="text-xs font-black text-red-500 hover:text-red-600">
+                    退出
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                {isAdmin && onWordsAdmin && (
-                  <button onClick={onWordsAdmin} className="text-xs font-black text-primary hover:brightness-110">
-                    词库管理
+              <div className="flex items-center gap-2">
+                {onStatusChange && (
+                  <button
+                    onClick={() => onStatusChange(userStatus === 'busy' ? 'online' : 'busy')}
+                    className={cn(
+                      'flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition-colors',
+                      userStatus === 'busy'
+                        ? 'bg-amber-100 text-amber-600'
+                        : 'bg-emerald-50 text-emerald-600'
+                    )}
+                  >
+                    <span className={cn('w-2 h-2 rounded-full', userStatus === 'busy' ? 'bg-amber-400' : 'bg-emerald-400')} />
+                    {userStatus === 'busy' ? '忙碌中' : '在线'}
                   </button>
                 )}
-                <button onClick={onLogout} className="text-xs font-black text-red-500 hover:text-red-600">
-                  退出
-                </button>
+                {onUsers && (
+                  <button
+                    onClick={onUsers}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                  >
+                    <UserSearch className="w-3.5 h-3.5" />
+                    好友列表
+                  </button>
+                )}
+                {onFriends && (
+                  <button
+                    onClick={onFriends}
+                    className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                  >
+                    消息中心
+                    {((pendingFriendRequests || 0) + (pendingRoomInvites || 0)) > 0 && (
+                      <span className="w-4 h-4 flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-black">
+                        {Math.min(9, (pendingFriendRequests || 0) + (pendingRoomInvites || 0))}
+                      </span>
+                    )}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -141,6 +191,59 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
               <HelpCircle className="w-4 h-4" />
               <span>游戏介绍与规则</span>
             </motion.button>
+
+            {((pendingFriendRequests || 0) > 0 || (pendingRoomInvites || 0) > 0) && (
+              <div className="space-y-3 text-left">
+                {(pendingFriendRequests || 0) > 0 && onFriends && (
+                  <button
+                    onClick={onFriends}
+                    className="w-full bg-white rounded-[28px] p-4 card-shadow border border-slate-50 text-left"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-slate-900 font-black">你有 {(pendingFriendRequests || 0)} 条新的好友申请</div>
+                        <div className="text-xs font-bold text-slate-400 mt-1">点击查看并处理好友申请</div>
+                      </div>
+                      <span className="min-w-7 h-7 px-2 flex items-center justify-center rounded-full bg-red-500 text-white text-xs font-black">
+                        {pendingFriendRequests}
+                      </span>
+                    </div>
+                  </button>
+                )}
+
+                {(pendingRoomInvites || 0) > 0 && (
+                  <div className="w-full bg-white rounded-[28px] p-4 card-shadow border border-slate-50 text-left">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-slate-900 font-black">你有 {(pendingRoomInvites || 0)} 条新的房间邀请</div>
+                        <div className="text-xs font-bold text-slate-400 mt-1">可以去好友页查看，或直接加入最近一条邀请</div>
+                      </div>
+                      <span className="min-w-7 h-7 px-2 flex items-center justify-center rounded-full bg-primary text-white text-xs font-black">
+                        {pendingRoomInvites}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-3">
+                      {onFriends && (
+                        <button
+                          onClick={onFriends}
+                          className="flex-1 h-11 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm"
+                        >
+                          查看邀请
+                        </button>
+                      )}
+                      {latestInviteRoomId && onJoinLatestInvite && (
+                        <button
+                          onClick={onJoinLatestInvite}
+                          className="flex-1 h-11 bg-primary text-white rounded-2xl font-black text-sm shadow-lg shadow-primary/20"
+                        >
+                          直接加入
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {activeRoomId && onResumeRoom && (
               <div className="bg-white rounded-[32px] p-4 card-shadow border border-slate-50 text-left">
@@ -356,6 +459,35 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                       {c}
                     </button>
                   ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-slate-400 font-bold text-xs uppercase tracking-widest">
+                  <Users className="w-4 h-4" />
+                  <span>房间权限</span>
+                </div>
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setConfig({ ...config, allowJoin: !config.allowJoin })}
+                    className={cn(
+                      'w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all',
+                      config.allowJoin ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'
+                    )}
+                  >
+                    <span>允许其他人自由加入</span>
+                    <span>{config.allowJoin ? '开启' : '关闭'}</span>
+                  </button>
+                  <button
+                    onClick={() => setConfig({ ...config, allowInvite: !config.allowInvite })}
+                    className={cn(
+                      'w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all',
+                      config.allowInvite ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-50 text-slate-400'
+                    )}
+                  >
+                    <span>允许其他玩家邀请好友</span>
+                    <span>{config.allowInvite ? '开启' : '关闭'}</span>
+                  </button>
                 </div>
               </div>
 

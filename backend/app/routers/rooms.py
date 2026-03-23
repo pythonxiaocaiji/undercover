@@ -1,19 +1,25 @@
 import json
 import secrets
 import string
+import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import get_current_user
 from app.db.session import get_db
+from app.models.friend import Friend
 from app.models.room import Room
 from app.models.player import Player
+from app.models.user import User
 from app.redis.client import redis_client
 from app.ws.manager import manager
+from app.ws.notify_manager import notify_manager
 from app.schemas.rooms import (
     CreateRoomRequest,
+    InviteFriendRequest,
     JoinRoomRequest,
     ReadyRequest,
     StartGameRequest,
@@ -32,6 +38,14 @@ def _gen_room_id() -> str:
 
 def _room_state_key(room_id: str) -> str:
     return f"room:{room_id}:state"
+
+
+def _invite_key(user_id: str) -> str:
+    return f"user:{user_id}:room_invites"
+
+
+def _room_invited_users_key(room_id: str) -> str:
+    return f"room:{room_id}:invited_users"
 
 
 async def _get_room_state(room_id: str) -> dict:
@@ -66,6 +80,8 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
         name=payload.room_name,
         max_players=payload.max_players,
         phase="大厅",
+        allow_join=1 if payload.allow_join else 0,
+        allow_invite=1 if payload.allow_invite else 0,
         created_at=now,
         updated_at=now,
     )
@@ -98,6 +114,8 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
         "votingTime": payload.voting_time,
         "wordCategory": payload.word_category,
         "undercoverCount": payload.undercover_count,
+        "allowJoin": bool(payload.allow_join),
+        "allowInvite": bool(payload.allow_invite),
         "round": 1,
         "currentSpeakerId": None,
         "votesBy": {},
@@ -132,6 +150,12 @@ async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = D
     current_phase = state.get("phase", "大厅")
     if current_phase != "大厅":
         raise HTTPException(status_code=409, detail="游戏已开始，无法加入")
+
+    if not bool(state.get("allowJoin", True)):
+        invited = await redis_client.smembers(_room_invited_users_key(room_id))
+        invited_user_ids = {v.decode() if isinstance(v, bytes) else v for v in (invited or set())}
+        if payload.player_id not in invited_user_ids:
+            raise HTTPException(status_code=403, detail="房间不允许自由加入")
 
     if len(players) >= int(state.get("maxPlayers", room.max_players)):
         raise HTTPException(status_code=409, detail="房间已满，无法加入")
@@ -180,6 +204,67 @@ async def get_state(room_id: str):
     if not state:
         raise HTTPException(status_code=404, detail="房间未找到")
     return state
+
+
+@router.post("/{room_id}/invite")
+async def invite_friend(
+    room_id: str,
+    payload: InviteFriendRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    state = await _get_room_state(room_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="房间未找到")
+
+    if state.get("phase") != "大厅":
+        raise HTTPException(status_code=409, detail="游戏开始后不可邀请好友")
+
+    players = state.get("players", [])
+    my_scoped_id = next((p.get("id") for p in players if str(p.get("id", "")).endswith(f"-{user.id}")), None)
+    me = next((p for p in players if p.get("id") == my_scoped_id), None)
+    if not me:
+        raise HTTPException(status_code=403, detail="你不在该房间中")
+
+    is_host = bool(me.get("isHost"))
+    if not is_host and not bool(state.get("allowInvite", True)):
+        raise HTTPException(status_code=403, detail="房主已禁止其他人邀请好友")
+
+    q = select(Friend).where(
+        Friend.status == "accepted",
+        or_(
+            and_(Friend.requester_id == user.id, Friend.addressee_id == payload.friend_user_id),
+            and_(Friend.requester_id == payload.friend_user_id, Friend.addressee_id == user.id),
+        ),
+    )
+    res = await db.execute(q)
+    relation = res.scalar_one_or_none()
+    if not relation:
+        raise HTTPException(status_code=403, detail="只能邀请你的好友")
+
+    target = await db.get(User, payload.friend_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="好友不存在")
+
+    target_status = str(getattr(target, "user_status", "online") or "online")
+    if target_status == "busy":
+        raise HTTPException(status_code=409, detail="该用户当前处于忙碌状态，无法邀请")
+
+    invite = {
+        "room_id": room_id,
+        "room_name": state.get("roomName") or room_id,
+        "inviter_user_id": user.id,
+        "inviter_name": user.username,
+        "allow_join": bool(state.get("allowJoin", True)),
+        "allow_invite": bool(state.get("allowInvite", True)),
+        "invite_id": uuid.uuid4().hex,
+        "created_at": datetime.utcnow().isoformat(),
+    }
+    await redis_client.sadd(_room_invited_users_key(room_id), target.id)
+    await redis_client.lpush(_invite_key(target.id), json.dumps(invite, ensure_ascii=False))
+    await redis_client.ltrim(_invite_key(target.id), 0, 49)
+    await notify_manager.send(target.id, {"type": "room_invite", "payload": invite})
+    return {"ok": True}
 
 
 @router.post("/{room_id}/ready")

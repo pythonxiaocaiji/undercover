@@ -7,11 +7,13 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.redis.client import redis_client
+from app.core.security import decode_access_token
 from app.db.session import SessionLocal
 from app.models.word_category import WordCategory
 from app.models.word_pair import WordPair
+from app.redis.client import redis_client
 from app.ws.manager import manager
+from app.ws.notify_manager import notify_manager
 
 router = APIRouter(prefix="/ws", tags=["ws"])
 
@@ -49,31 +51,54 @@ async def _seed_words_if_empty(db: AsyncSession) -> None:
     await db.commit()
 
 
-async def _pick_word_pair(category: str | None = None) -> tuple[str, str, str]:
+async def _pick_word_pair(category: str | None = None, room_id: str | None = None) -> tuple[str, str, str]:
     async with SessionLocal() as db:
         await _seed_words_if_empty(db)
 
-        cat_obj: WordCategory | None = None
-        if category:
+        use_all = category in (None, "", "全部")
+
+        if use_all:
+            q = select(WordPair)
+            res = await db.execute(q)
+            pairs = res.scalars().all()
+            if not pairs:
+                raise RuntimeError("no_word_pairs")
+        else:
+            cat_obj: WordCategory | None = None
             q = select(WordCategory).where(WordCategory.name == category)
             res = await db.execute(q)
             cat_obj = res.scalar_one_or_none()
 
-        if not cat_obj:
-            q = select(WordCategory)
-            res = await db.execute(q)
-            cats = res.scalars().all()
-            if not cats:
-                raise RuntimeError("no_word_categories")
-            cat_obj = random.choice(cats)
+            if not cat_obj:
+                q = select(WordCategory)
+                res = await db.execute(q)
+                cats = res.scalars().all()
+                if not cats:
+                    raise RuntimeError("no_word_categories")
+                cat_obj = random.choice(cats)
 
-        q = select(WordPair).where(WordPair.category_id == cat_obj.id)
-        res = await db.execute(q)
-        pairs = res.scalars().all()
-        if not pairs:
-            raise RuntimeError("no_word_pairs")
-        pair = random.choice(pairs)
-        return cat_obj.name, pair.civilian_word, pair.undercover_word
+            q = select(WordPair).where(WordPair.category_id == cat_obj.id)
+            res = await db.execute(q)
+            pairs = res.scalars().all()
+            if not pairs:
+                raise RuntimeError("no_word_pairs")
+
+        used_ids: set[str] = set()
+        if room_id:
+            raw = await redis_client.smembers(_room_used_pairs_key(room_id))
+            used_ids = {v.decode() if isinstance(v, bytes) else v for v in raw} if raw else set()
+
+        available = [p for p in pairs if p.id not in used_ids]
+        if not available:
+            if room_id:
+                await redis_client.delete(_room_used_pairs_key(room_id))
+            available = pairs
+
+        pair = random.choice(available)
+        if room_id:
+            await redis_client.sadd(_room_used_pairs_key(room_id), pair.id)
+        cat_name = "全部" if use_all else cat_obj.name
+        return cat_name, pair.civilian_word, pair.undercover_word
 
 
 def _room_state_key(room_id: str) -> str:
@@ -82,6 +107,10 @@ def _room_state_key(room_id: str) -> str:
 
 def _room_secrets_key(room_id: str) -> str:
     return f"room:{room_id}:secrets"
+
+
+def _room_used_pairs_key(room_id: str) -> str:
+    return f"room:{room_id}:used_pairs"
 
 
 async def _get_room_state(room_id: str) -> dict:
@@ -109,6 +138,7 @@ async def _set_secret(room_id: str, player_id: str, secret: dict) -> None:
 async def _dissolve_room(room_id: str) -> None:
     await redis_client.delete(_room_state_key(room_id))
     await redis_client.delete(_room_secrets_key(room_id))
+    await redis_client.delete(_room_used_pairs_key(room_id))
 
 
 def _find_player(state: dict, player_id: str) -> dict | None:
@@ -173,7 +203,7 @@ async def _restart_game(room_id: str, state: dict) -> dict:
     if not players:
         return state
 
-    category_name, civilian_word, undercover_word = await _pick_word_pair(state.get("wordCategory"))
+    category_name, civilian_word, undercover_word = await _pick_word_pair(state.get("wordCategory"), room_id)
     state["wordCategory"] = category_name
 
     undercover_count = int(state.get("undercoverCount", 1))
@@ -443,7 +473,7 @@ async def ws_room(websocket: WebSocket, room_id: str):
                     await websocket.send_json({"type": "error", "error": "no_players"})
                     continue
 
-                category_name, civilian_word, undercover_word = await _pick_word_pair(state.get("wordCategory"))
+                category_name, civilian_word, undercover_word = await _pick_word_pair(state.get("wordCategory"), room_id)
                 state["wordCategory"] = category_name
 
                 undercover_count = int(state.get("undercoverCount", 1))
@@ -638,9 +668,12 @@ async def ws_room(websocket: WebSocket, room_id: str):
         try:
             state = await _get_room_state(room_id)
             if player_id and state:
+                phase = state.get("phase", "大厅")
                 if _is_host(state, player_id):
                     await manager.broadcast(room_id, {"type": "room:closed", "payload": {"roomId": room_id}})
                     await _dissolve_room(room_id)
+                elif phase in ("发言", "投票", "结果", "结束"):
+                    pass
                 else:
                     state = _remove_player_from_state(state, player_id)
                     await _set_room_state(room_id, state)
@@ -650,3 +683,27 @@ async def ws_room(websocket: WebSocket, room_id: str):
     except Exception:
         await manager.disconnect(room_id, websocket)
         raise
+
+
+@router.websocket("/notify/{user_id}")
+async def ws_notify(websocket: WebSocket, user_id: str):
+    token = websocket.query_params.get("token", "")
+    try:
+        payload = decode_access_token(token)
+        if payload.get("sub") != user_id:
+            await websocket.close(code=4001)
+            return
+    except Exception:
+        await websocket.close(code=4001)
+        return
+
+    await notify_manager.connect(user_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        await notify_manager.disconnect(user_id, websocket)
+    except Exception:
+        await notify_manager.disconnect(user_id, websocket)

@@ -9,6 +9,8 @@ class CreateRoomRequest(BaseModel):
     voting_time: int = Field(ge=10, le=300)
     word_category: str = Field(min_length=1, max_length=32)
     undercover_count: int = Field(ge=1, le=4)
+    allow_join: bool = True
+    allow_invite: bool = True
 
     host_player_id: str = Field(min_length=1, max_length=64)
     host_player_name: str = Field(min_length=1, max_length=32)
@@ -39,6 +41,10 @@ class ReactionRequest(BaseModel):
     from_player_id: str = Field(min_length=1, max_length=64)
     target_player_id: str = Field(min_length=1, max_length=64)
     emoji: str = Field(min_length=1, max_length=8)
+
+
+class InviteFriendRequest(BaseModel):
+    friend_user_id: str = Field(min_length=1, max_length=64)
 
 
 class UpdateStateRequest(BaseModel):
