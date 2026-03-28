@@ -69,6 +69,7 @@ def _is_host(state: dict, player_id: str) -> bool:
 
 
 @router.post("")
+@router.post("/", include_in_schema=False)
 async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get_db)):
     room_id = _gen_room_id()
     now = datetime.utcnow()
