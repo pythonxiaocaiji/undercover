@@ -39,6 +39,14 @@ function httpBaseUrl() {
   return (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:8000';
 }
 
+export function resolveAvatar(url: string): string {
+  if (!url) return '';
+  if (url.startsWith('http') && !url.includes('/uploads/')) return url;
+  const match = url.match(/(\/uploads\/.+)/);
+  if (match) return `${httpBaseUrl()}${match[1]}`;
+  return url;
+}
+
 function wsBaseUrl() {
   const http = httpBaseUrl();
   return http.replace(/^http/, 'ws');
@@ -198,7 +206,8 @@ export async function listFriends(): Promise<FriendItem[]> {
     headers: { ...authHeaders() },
   });
   await throwIfNotOk(res);
-  return res.json();
+  const data: FriendItem[] = await res.json();
+  return data.map((f) => ({ ...f, avatar: resolveAvatar(f.avatar) }));
 }
 
 export async function listFriendRequests(): Promise<FriendItem[]> {
@@ -207,7 +216,8 @@ export async function listFriendRequests(): Promise<FriendItem[]> {
     headers: { ...authHeaders() },
   });
   await throwIfNotOk(res);
-  return res.json();
+  const data: FriendItem[] = await res.json();
+  return data.map((f) => ({ ...f, avatar: resolveAvatar(f.avatar) }));
 }
 
 export async function sendFriendRequest(targetPhone: string): Promise<FriendItem> {
@@ -288,7 +298,8 @@ export async function listUsers(q?: string): Promise<UserPublicItem[]> {
     : `${httpBaseUrl()}/users`;
   const res = await fetch(url, { method: 'GET', headers: { ...authHeaders() } });
   await throwIfNotOk(res);
-  return res.json();
+  const data: UserPublicItem[] = await res.json();
+  return data.map((u) => ({ ...u, avatar: resolveAvatar(u.avatar) }));
 }
 
 export function connectNotifyWs(userId: string): WebSocket {

@@ -19,6 +19,20 @@ function httpBaseUrl() {
   return (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:8000';
 }
 
+function normalizeAvatar(url: string): string {
+  if (!url) return '';
+  // External URL (e.g. Google avatar) — keep as-is
+  if (url.startsWith('http') && !url.includes('/uploads/')) return url;
+  // Extract relative path, strip whatever host the backend reported
+  const match = url.match(/(\/uploads\/.+)/);
+  if (match) return `${httpBaseUrl()}${match[1]}`;
+  return url;
+}
+
+function normalizeProfile(p: UserProfile): UserProfile {
+  return { ...p, avatar: normalizeAvatar(p.avatar) };
+}
+
 const TOKEN_KEY = 'undercover_token';
 
 async function throwIfNotOk(res: Response): Promise<void> {
@@ -63,7 +77,8 @@ export async function register(phone: string, password: string): Promise<UserPro
     body: JSON.stringify({ phone, password }),
   });
   await throwIfNotOk(res);
-  return res.json();
+  const data = await res.json() as UserProfile;
+  return normalizeProfile(data);
 }
 
 export async function login(phone: string, password: string, captchaId: string, captchaCode: string): Promise<string> {
@@ -91,7 +106,7 @@ export async function registerWithCaptcha(phone: string, password: string, captc
     body: JSON.stringify({ phone, password, captcha_id: captchaId, captcha_code: captchaCode }),
   });
   await throwIfNotOk(res);
-  return res.json();
+  return normalizeProfile(await res.json());
 }
 
 export async function me(): Promise<UserProfile> {
@@ -100,7 +115,7 @@ export async function me(): Promise<UserProfile> {
     headers: { ...authHeaders() },
   });
   await throwIfNotOk(res);
-  return res.json();
+  return normalizeProfile(await res.json());
 }
 
 export async function updateProfile(input: { username?: string; avatar?: string }): Promise<UserProfile> {
@@ -110,7 +125,7 @@ export async function updateProfile(input: { username?: string; avatar?: string 
     body: JSON.stringify(input),
   });
   await throwIfNotOk(res);
-  return res.json();
+  return normalizeProfile(await res.json());
 }
 
 export async function uploadAvatar(file: File): Promise<UserProfile> {
@@ -122,5 +137,5 @@ export async function uploadAvatar(file: File): Promise<UserProfile> {
     body: form,
   });
   await throwIfNotOk(res);
-  return res.json();
+  return normalizeProfile(await res.json());
 }
