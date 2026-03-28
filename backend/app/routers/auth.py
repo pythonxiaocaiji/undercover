@@ -61,7 +61,8 @@ def _avatar_for_response(request: Request, value: str | None) -> str:
     if "://" in v and "/uploads/" in v:
         v = "/uploads/" + v.split("/uploads/", 1)[1]
     if v.startswith("/uploads/"):
-        base = str(request.base_url).rstrip("/")
+        base = (settings.app_public_url.rstrip("/") if settings.app_public_url
+                else str(request.base_url).rstrip("/"))
         return f"{base}{v}"
     return v
 

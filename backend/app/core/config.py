@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_env: str = "dev"
     app_name: str = "undercover-backend"
 
+    app_public_url: str = ""
+
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
 
     # Allow origins by regex. Default covers all RFC1918 private IPs for LAN dev.
