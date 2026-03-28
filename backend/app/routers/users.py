@@ -14,6 +14,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.get("", response_model=list[UserPublicDto])
+@router.get("/", response_model=list[UserPublicDto], include_in_schema=False)
 async def list_users(
     request: Request,
     q: str = "",

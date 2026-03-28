@@ -56,6 +56,7 @@ async def _serialize_friend(request: Request, db: AsyncSession, me: User, row: F
 
 
 @router.get("", response_model=list[FriendDto])
+@router.get("/", response_model=list[FriendDto], include_in_schema=False)
 async def list_friends(request: Request, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     q = select(Friend).where(
         Friend.status == "accepted",
