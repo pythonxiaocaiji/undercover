@@ -55,21 +55,26 @@ function wsBaseUrl() {
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return;
 
+  let message = '';
   try {
     const data = await res.json();
     const detail = (data as any)?.detail;
 
     if (typeof detail === 'string' && detail) {
-      throw new Error(detail);
+      message = detail;
     }
 
-    if (Array.isArray(detail) && detail.length > 0) {
+    if (!message && Array.isArray(detail) && detail.length > 0) {
       const msg = detail?.[0]?.msg;
       if (typeof msg === 'string' && msg) {
-        throw new Error(msg);
+        message = msg;
       }
     }
   } catch {
+  }
+
+  if (message) {
+    throw new Error(message);
   }
 
   throw new Error(`request_failed_${res.status}`);

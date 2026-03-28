@@ -46,6 +46,13 @@ async function throwIfNotOk(res: Response): Promise<void> {
     detail = null;
   }
 
+  if (Array.isArray(detail) && detail.length > 0) {
+    const msg = detail?.[0]?.msg;
+    if (typeof msg === 'string' && msg) {
+      throw new Error(msg);
+    }
+  }
+
   if (typeof detail === 'string' && detail) {
     throw new Error(detail);
   }
