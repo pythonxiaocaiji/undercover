@@ -81,7 +81,7 @@ export async function createRoom(params: {
   config: RoomConfig;
   host: Pick<Player, 'id' | 'name' | 'avatar'>;
 }): Promise<{ roomId: string; playerId: string }> {
-  const res = await fetch(`${httpBaseUrl()}/rooms`, {
+  const res = await fetch(`${httpBaseUrl()}/rooms/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
