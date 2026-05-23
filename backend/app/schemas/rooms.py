@@ -11,6 +11,7 @@ class CreateRoomRequest(BaseModel):
     undercover_count: int = Field(ge=1, le=4)
     allow_join: bool = True
     allow_invite: bool = True
+    allow_quick_match: bool = True
 
     host_player_id: str = Field(min_length=1, max_length=64)
     host_player_name: str = Field(min_length=1, max_length=32)

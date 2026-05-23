@@ -29,6 +29,7 @@ import {
   listFriendRequests,
   listRoomInvites,
   listWordCategories,
+  quickMatch,
   updateUserStatus,
   wsSendReaction,
   wsSendRestart,
@@ -602,6 +603,21 @@ export default function App() {
     setView('game');
   };
 
+  const handleQuickMatch = async () => {
+    const existing = activeRoom || loadActiveRoom();
+    if (existing) {
+      toast('warning', '无法快速匹配', `你已在房间 ${existing.roomId} 中，请先返回或退出后再匹配`);
+      return;
+    }
+    const resp = await quickMatch({ player: { id: myPlayer.id, name: myPlayer.name, avatar: myPlayer.avatar } });
+    setRoomPlayerId(resp.playerId);
+    const ar: ActiveRoom = { roomId: resp.roomId, playerId: resp.playerId };
+    setActiveRoom(ar);
+    saveActiveRoom(ar);
+    connectWs(resp.roomId, resp.playerId);
+    setView('game');
+  };
+
   const handleResumeRoom = () => {
     const ar = activeRoom || loadActiveRoom();
     if (!ar) return;
@@ -689,6 +705,7 @@ export default function App() {
       <HomeView
         onStartGame={handleStartGame}
         onMatch={handleJoinRoom}
+        onQuickMatch={handleQuickMatch}
         meName={myPlayer.name}
         meAvatar={myPlayer.avatar}
         wordCategories={wordCategories}

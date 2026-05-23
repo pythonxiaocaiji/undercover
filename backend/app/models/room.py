@@ -13,6 +13,7 @@ class Room(Base):
     phase: Mapped[str] = mapped_column(String(16))
     allow_join: Mapped[int] = mapped_column(Integer, default=1)
     allow_invite: Mapped[int] = mapped_column(Integer, default=1)
+    allow_quick_match: Mapped[int] = mapped_column(Integer, default=1)
 
     created_at: Mapped[DateTime] = mapped_column(DateTime)
     updated_at: Mapped[DateTime] = mapped_column(DateTime)

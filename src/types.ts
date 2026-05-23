@@ -52,6 +52,7 @@ export interface RoomConfig {
   undercoverCount: number;
   allowJoin: boolean;
   allowInvite: boolean;
+  allowQuickMatch?: boolean;  // 是否允许快速匹配玩家加入
 }
 
 export interface GameState {

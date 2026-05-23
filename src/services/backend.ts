@@ -17,6 +17,7 @@ export type BackendRoomState = {
   undercoverCount: number;
   allowJoin?: boolean;
   allowInvite?: boolean;
+  allowQuickMatch?: boolean;
   round: number;
   currentSpeakerId: string | null;
   votesBy?: Record<string, string>;
@@ -98,6 +99,7 @@ export async function createRoom(params: {
       undercover_count: params.config.undercoverCount,
       allow_join: params.config.allowJoin,
       allow_invite: params.config.allowInvite,
+      allow_quick_match: params.config.allowQuickMatch,
       host_player_id: params.host.id,
       host_player_name: params.host.name,
       host_avatar: params.host.avatar,
@@ -112,6 +114,22 @@ export async function joinRoom(params: {
   player: Pick<Player, 'id' | 'name' | 'avatar'>;
 }): Promise<{ roomId: string; playerId: string }> {
   const res = await fetch(`${httpBaseUrl()}/rooms/${params.roomId}/join`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      player_id: params.player.id,
+      player_name: params.player.name,
+      avatar: params.player.avatar,
+    }),
+  });
+  await throwIfNotOk(res);
+  return res.json();
+}
+
+export async function quickMatch(params: {
+  player: Pick<Player, 'id' | 'name' | 'avatar'>;
+}): Promise<{ roomId: string; playerId: string }> {
+  const res = await fetch(`${httpBaseUrl()}/rooms/quick-match`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

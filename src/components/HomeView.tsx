@@ -8,6 +8,7 @@ import { useToast } from './Toast';
 interface HomeViewProps {
   onStartGame: (config: RoomConfig) => Promise<void>;
   onMatch: (roomId: string) => Promise<void>;
+  onQuickMatch: () => Promise<void>;
   meName: string;
   meAvatar: string;
   wordCategories: string[];
@@ -28,7 +29,7 @@ interface HomeViewProps {
   onLogout: () => void;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onFriends, pendingFriendRequests, pendingRoomInvites, latestInviteRoomId, onJoinLatestInvite, userStatus, onStatusChange, onUsers, onProfile, onLogout }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, onQuickMatch, meName, meAvatar, wordCategories, onRefreshWordCategories, isAdmin, onWordsAdmin, activeRoomId, onResumeRoom, onFriends, pendingFriendRequests, pendingRoomInvites, latestInviteRoomId, onJoinLatestInvite, userStatus, onStatusChange, onUsers, onProfile, onLogout }) => {
   const { toast } = useToast();
   const [view, setView] = useState<'main' | 'create' | 'join'>('main');
   const [showRules, setShowRules] = useState(false);
@@ -42,6 +43,7 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
     undercoverCount: 2,
     allowJoin: true,
     allowInvite: true,
+    allowQuickMatch: true,
   });
   const times = [30, 60, 90];
 
@@ -280,6 +282,26 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                onClick={async () => {
+                  if (activeRoomId) {
+                    toast('warning', '无法快速匹配', `你已在房间 ${activeRoomId} 中，请先返回或退出`);
+                    return;
+                  }
+                  try {
+                    await onQuickMatch();
+                  } catch (e: any) {
+                    toast('error', '快速匹配失败', String(e?.message || e));
+                  }
+                }}
+                className="w-full h-20 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-3xl font-black text-xl shadow-xl shadow-purple-500/20 flex items-center justify-center gap-3"
+              >
+                <Play className="w-6 h-6" />
+                <span>快速游戏</span>
+              </motion.button>
+
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   if (activeRoomId) {
                     toast('warning', '无法加入房间', `你已在房间 ${activeRoomId} 中，请先返回或退出`);
@@ -487,6 +509,16 @@ export const HomeView: React.FC<HomeViewProps> = ({ onStartGame, onMatch, meName
                   >
                     <span>允许其他玩家邀请好友</span>
                     <span>{config.allowInvite ? '开启' : '关闭'}</span>
+                  </button>
+                  <button
+                    onClick={() => setConfig({ ...config, allowQuickMatch: !config.allowQuickMatch })}
+                    className={cn(
+                      'w-full flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all',
+                      config.allowQuickMatch ? 'bg-purple-50 text-purple-600' : 'bg-slate-50 text-slate-400'
+                    )}
+                  >
+                    <span>允许快速匹配玩家加入</span>
+                    <span>{config.allowQuickMatch ? '开启' : '关闭'}</span>
                   </button>
                 </div>
               </div>

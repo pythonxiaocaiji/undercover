@@ -280,3 +280,120 @@ soundManager.toggleMute();
 - [ ] 添加图片压缩功能（可选）
 - [ ] 优化大文件上传进度显示
 - [ ] 添加更多阶段转换动画效果
+
+---
+
+## 2024-01-XX - 快速游戏功能和房间配置
+
+### 完成的功能
+
+#### 1. 快速匹配功能 🚀
+- **新增后端接口**：`POST /rooms/quick-match`
+  - 自动匹配进入允许快速匹配且未满的大厅房间
+  - 按房间创建时间倒序查找
+  - 找不到合适房间时返回友好提示
+
+- **匹配逻辑**
+  - 查找条件：`allow_quick_match=1` 且 `phase="大厅"`
+  - 检查房间是否未满（当前玩家数 < 最大玩家数）
+  - 自动加入第一个符合条件的房间
+  - 如果已在房间中，直接返回房间信息
+
+#### 2. 房间配置增强 ⚙️
+- **新增配置项**：`allowQuickMatch`（允许快速匹配玩家加入）
+  - 默认值：`true`（开启）
+  - 房主创建房间时可配置
+  - 存储到数据库和 Redis 状态中
+
+- **数据库字段**
+  - `backend/app/models/room.py`：已添加 `allow_quick_match` 字段
+  - `backend/app/schemas/rooms.py`：CreateRoomRequest 添加 `allow_quick_match` 参数
+
+#### 3. 前端界面更新 🎨
+- **主界面新增按钮**
+  - "快速游戏"按钮：紫粉渐变色，位于"创建房间"和"加入房间"之间
+  - 点击后自动匹配进入合适的房间
+  - 已在房间中时显示友好提示
+
+- **创建房间界面**
+  - 新增"允许快速匹配玩家加入"开关
+  - 紫色主题，与快速游戏按钮呼应
+  - 默认开启状态
+
+#### 4. 类型定义更新 📝
+- **RoomConfig 类型**（`src/types.ts`）
+  - 添加 `allowQuickMatch?: boolean` 字段
+
+- **BackendRoomState 类型**（`src/services/backend.ts`）
+  - 添加 `allowQuickMatch?: boolean` 字段
+
+### 技术实现
+
+#### 后端快速匹配逻辑
+```python
+# 查找符合条件的房间
+rooms = await db.execute(
+    select(Room).where(
+        Room.allow_quick_match == 1,
+        Room.phase == "大厅"
+    ).order_by(Room.created_at.desc())
+)
+
+# 遍历房间，找到第一个未满的
+for room in rooms:
+    state = await _get_room_state(room.id)
+    players = state.get("players", [])
+    if len(players) < max_players:
+        # 加入房间
+        ...
+```
+
+#### 前端快速匹配调用
+```typescript
+// 调用快速匹配接口
+const resp = await quickMatch({ 
+  player: { id, name, avatar } 
+});
+
+// 连接 WebSocket 并进入游戏
+connectWs(resp.roomId, resp.playerId);
+setView('game');
+```
+
+### 用户体验
+
+#### 快速游戏流程
+1. 用户点击"快速游戏"按钮
+2. 系统自动查找合适的房间
+3. 找到房间后自动加入
+4. 进入游戏大厅，等待其他玩家
+
+#### 房主控制
+- 房主可以选择是否允许快速匹配玩家加入
+- 关闭后，只能通过房间号或邀请加入
+- 开启后，快速匹配玩家可以自动加入
+
+### 修改的文件
+- `backend/app/schemas/rooms.py` - 添加 `allow_quick_match` 参数
+- `backend/app/routers/rooms.py` - 创建房间时保存配置，新增快速匹配接口
+- `backend/app/models/room.py` - 已有 `allow_quick_match` 字段
+- `src/types.ts` - 已有 `allowQuickMatch` 字段
+- `src/services/backend.ts` - 添加 `quickMatch` 函数和类型定义
+- `src/components/HomeView.tsx` - 添加快速游戏按钮和配置项
+- `src/App.tsx` - 添加 `handleQuickMatch` 处理函数
+
+### 测试建议
+1. 创建房间时测试"允许快速匹配"开关
+2. 测试快速匹配功能（有可用房间）
+3. 测试快速匹配功能（无可用房间）
+4. 测试房间满员时的快速匹配
+5. 测试游戏进行中的房间不会被匹配到
+6. 测试关闭快速匹配的房间不会被匹配到
+
+### 待优化
+- [ ] 添加更智能的匹配算法（考虑玩家等级、游戏模式等）
+- [ ] 添加匹配队列和等待动画
+- [ ] 支持取消匹配操作
+- [ ] 添加匹配超时机制
+
+---

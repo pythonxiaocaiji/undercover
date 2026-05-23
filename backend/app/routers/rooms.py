@@ -83,6 +83,7 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
         phase="大厅",
         allow_join=1 if payload.allow_join else 0,
         allow_invite=1 if payload.allow_invite else 0,
+        allow_quick_match=1 if payload.allow_quick_match else 0,
         created_at=now,
         updated_at=now,
     )
@@ -117,6 +118,7 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
         "undercoverCount": payload.undercover_count,
         "allowJoin": bool(payload.allow_join),
         "allowInvite": bool(payload.allow_invite),
+        "allowQuickMatch": bool(payload.allow_quick_match),
         "round": 1,
         "currentSpeakerId": None,
         "votesBy": {},
@@ -379,3 +381,73 @@ async def reaction(room_id: str, payload: ReactionRequest):
     await manager.broadcast(room_id, {"type": "state", "payload": state})
 
     return {"ok": True}
+
+
+@router.post("/quick-match")
+async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_db)):
+    """快速匹配：自动加入一个允许快速匹配且未满的大厅房间"""
+    # 查找符合条件的房间：allow_quick_match=1, phase="大厅", 未满
+    q = select(Room).where(
+        Room.allow_quick_match == 1,
+        Room.phase == "大厅"
+    ).order_by(Room.created_at.desc())
+    
+    res = await db.execute(q)
+    rooms = res.scalars().all()
+    
+    # 遍历房间，找到第一个未满的
+    for room in rooms:
+        state = await _get_room_state(room.id)
+        if not state:
+            continue
+        
+        players = state.get("players", [])
+        max_players = int(state.get("maxPlayers", room.max_players))
+        
+        # 检查房间是否未满
+        if len(players) < max_players:
+            # 尝试加入这个房间
+            now = datetime.utcnow()
+            scoped_player_id = f"{room.id}-{payload.player_id}"
+            
+            # 检查是否已经在房间中
+            existing = await db.get(Player, scoped_player_id)
+            if existing:
+                return {"roomId": room.id, "playerId": scoped_player_id}
+            
+            # 创建新玩家
+            player = Player(
+                id=scoped_player_id,
+                room_id=room.id,
+                name=payload.player_name,
+                avatar=payload.avatar,
+                is_host=False,
+                is_ready=False,
+                status="active",
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(player)
+            await db.commit()
+            
+            # 更新房间状态
+            players.append(
+                {
+                    "id": player.id,
+                    "name": player.name,
+                    "avatar": player.avatar,
+                    "status": player.status,
+                    "isHost": False,
+                    "isReady": False,
+                    "votes": 0,
+                }
+            )
+            state["players"] = players
+            await _set_room_state(room.id, state)
+            await manager.broadcast(room.id, {"type": "state", "payload": state})
+            
+            return {"roomId": room.id, "playerId": player.id}
+    
+    # 没有找到合适的房间
+    raise HTTPException(status_code=404, detail="暂无可用房间，请稍后再试或创建新房间")
+
