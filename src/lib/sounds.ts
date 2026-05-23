@@ -59,6 +59,7 @@ class SoundManager {
       const loadPromises = Object.entries(SOUND_FILES).map(([type, url]) => {
         return new Promise<void>((resolve) => {
           const audio = new Audio(url);
+          audio.loop = false;
           audio.volume = this.volume;
           audio.preload = 'auto';
           

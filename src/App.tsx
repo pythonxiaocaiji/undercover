@@ -397,14 +397,15 @@ export default function App() {
       setShowPhaseTransition(true);
       setTimeout(() => setShowPhaseTransition(false), 2500);
       
-      // Play phase change sound
-      soundManager.play('phase_change');
-      
-      // Play specific sounds for certain phases
+      // Play phase sounds (skip phase_change for 结束 to avoid overlapping with victory/defeat)
       if (state.phase === '发言') {
+        soundManager.play('phase_change');
         soundManager.play('game_start');
       } else if (state.phase === '投票') {
+        soundManager.play('phase_change');
         soundManager.play('notification');
+      } else if (state.phase === '结果') {
+        soundManager.play('phase_change');
       } else if (state.phase === '结束') {
         if (state.winner === '平民') {
           soundManager.play('victory');
@@ -543,7 +544,11 @@ export default function App() {
         }
 
         const ws = wsRef.current;
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        // Don't re-broadcast 投票 at timer=0 — backend is settling the vote;
+        // re-broadcasting would overwrite the 结果 phase the backend just set.
+        const awaitingVoteResult = next.phase === '投票' && next.timer <= 0;
+        if (ws && ws.readyState === WebSocket.OPEN && !awaitingVoteResult) {
+          const isNewRound = next.phase === '发言' && prev.phase !== '发言';
           const backendState: BackendRoomState = {
             roomId: prev.roomId,
             roomName: prev.roomName,
@@ -556,7 +561,7 @@ export default function App() {
             undercoverCount: roomConfig.undercoverCount,
             allowJoin: roomConfig.allowJoin,
             allowInvite: roomConfig.allowInvite,
-            round: prev.round,
+            round: next.round,
             currentSpeakerId: next.currentSpeakerId,
             speakingOrder: next.speakingOrder,
             players: players.map(p => ({
@@ -566,7 +571,7 @@ export default function App() {
               status: p.status,
               isHost: p.isHost,
               isReady: p.isReady,
-              votes: p.votes,
+              votes: isNewRound ? 0 : p.votes,
             })),
             reactions,
           };
@@ -952,6 +957,27 @@ export default function App() {
                     <p className="text-sm sm:text-base text-slate-400 font-medium">全员弃票或票数相同</p>
                   </>
                 )}
+                {/* Vote breakdown */}
+                {(() => {
+                  const voted = players.filter(p => (p.votes ?? 0) > 0).sort((a, b) => (b.votes ?? 0) - (a.votes ?? 0));
+                  if (voted.length === 0) return null;
+                  return (
+                    <div className="w-full space-y-2 pt-1">
+                      <div className="text-xs font-bold text-slate-400 text-center">本轮投票分布</div>
+                      <div className="flex flex-col gap-1.5">
+                        {voted.map(p => (
+                          <div key={p.id} className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl card-shadow">
+                            <div className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0">
+                              <img src={p.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            </div>
+                            <span className="text-sm font-bold text-slate-700 flex-1 truncate">{p.name}</span>
+                            <span className="text-sm font-black text-primary">{p.votes} 票</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <p className="text-slate-400 font-bold text-xs sm:text-sm">{gameState.timer}s 后进入下一轮</p>
               </div>
             </motion.div>

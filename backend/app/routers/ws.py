@@ -270,8 +270,8 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
     if state.get("phase") != "投票":
         return False
 
-    votes_by = state.get("votesBy")
-    if not isinstance(votes_by, dict) or not votes_by:
+    votes_by = state.get("votesBy") or {}
+    if not isinstance(votes_by, dict):
         return False
 
     alive_ids = _alive_player_ids(state)
@@ -292,7 +292,6 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
         state["currentSpeakerId"] = None
         state["votesBy"] = {}
         for p in state.get("players", []):
-            p["votes"] = 0
             if p.get("status") == "voted":
                 p["status"] = "active"
         return True
@@ -331,7 +330,6 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
             state["currentSpeakerId"] = None
             state["votesBy"] = {}
             for p in state.get("players", []):
-                p["votes"] = 0
                 if p.get("status") == "voted":
                     p["status"] = "active"
         return True
@@ -370,7 +368,6 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
             state["currentSpeakerId"] = None
             state["votesBy"] = {}
             for p in state.get("players", []):
-                p["votes"] = 0
                 if p.get("status") == "voted":
                     p["status"] = "active"
         return True
