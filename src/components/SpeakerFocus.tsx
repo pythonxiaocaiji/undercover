@@ -71,7 +71,7 @@ export const SpeakerFocus: React.FC<SpeakerFocusProps> = ({ player, timer, maxTi
 
         {/* Avatar */}
         <div
-          className="absolute w-24 h-24 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 border-white shadow-xl animate-[speaker-pulse_2s_ease-in-out_infinite]"
+          className="absolute w-20 h-20 sm:w-28 sm:h-28 rounded-full overflow-hidden border-4 border-white shadow-xl animate-[speaker-pulse_2s_ease-in-out_infinite]"
           style={{ animation: 'speaker-pulse 2s ease-in-out infinite' }}
         >
           <img 
