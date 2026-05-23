@@ -25,12 +25,12 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
       whileTap={!isEliminated ? { scale: 0.98 } : {}}
       onClick={!isEliminated ? onClick : undefined}
       className={cn(
-        "relative flex flex-col items-center p-4 rounded-3xl transition-all duration-300",
+        "relative flex flex-col items-center p-3 sm:p-4 rounded-2xl sm:rounded-3xl transition-all duration-300",
         "bg-white card-shadow",
         isEliminated && "opacity-50 grayscale",
         isVoted && "opacity-80",
-        isSelected && "ring-4 ring-primary ring-offset-2",
-        isMe && !isSelected && "ring-2 ring-blue-accent ring-offset-2",
+        isSelected && "ring-2 sm:ring-4 ring-primary ring-offset-1 sm:ring-offset-2",
+        isMe && !isSelected && "ring-2 ring-blue-accent ring-offset-1 sm:ring-offset-2",
         isActive && !isSelected && "hover:card-shadow-hover",
         isSelectable && "cursor-pointer"
       )}
@@ -62,8 +62,8 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
 
       <div className="relative">
         <div className={cn(
-          "w-16 h-16 rounded-2xl overflow-hidden border-2 border-white shadow-sm",
-          player.isSpeaking && "ring-4 ring-blue-accent ring-offset-2 animate-pulse"
+          "w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl overflow-hidden border-2 border-white shadow-sm",
+          player.isSpeaking && "ring-2 sm:ring-4 ring-blue-accent ring-offset-1 sm:ring-offset-2 animate-pulse"
         )}>
           <img 
             src={player.avatar} 
@@ -74,13 +74,13 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
         </div>
         
         {isVoted && (
-          <div className="absolute -top-1 -right-1 bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+          <div className="absolute -top-1 -right-1 bg-primary text-white text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shadow-sm">
             已投票
           </div>
         )}
       </div>
 
-      <span className="mt-3 text-sm font-bold text-slate-800 truncate w-full text-center">
+      <span className="mt-2 sm:mt-3 text-xs sm:text-sm font-bold text-slate-800 truncate w-full text-center">
         {player.name}
       </span>
       

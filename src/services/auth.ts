@@ -57,7 +57,22 @@ async function throwIfNotOk(res: Response): Promise<void> {
     throw new Error(detail);
   }
 
-  throw new Error(`request_failed_${res.status}`);
+  // Better error messages for common HTTP status codes
+  const statusMessages: Record<number, string> = {
+    400: '请求参数错误',
+    401: '未授权，请重新登录',
+    403: '无权限访问',
+    404: '请求的资源不存在',
+    413: '文件过大，请选择小于5MB的图片',
+    415: '不支持的文件格式',
+    422: '请求数据验证失败',
+    500: '服务器内部错误',
+    502: '网关错误',
+    503: '服务暂时不可用',
+  };
+
+  const message = statusMessages[res.status] || `请求失败 (${res.status})`;
+  throw new Error(message);
 }
 
 export function getToken(): string | null {
@@ -136,6 +151,17 @@ export async function updateProfile(input: { username?: string; avatar?: string 
 }
 
 export async function uploadAvatar(file: File): Promise<UserProfile> {
+  // Client-side validation
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  if (file.size > maxSize) {
+    throw new Error('图片过大，请选择小于5MB的图片');
+  }
+
+  const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    throw new Error('不支持的图片格式，仅支持 PNG/JPG/WebP');
+  }
+
   const form = new FormData();
   form.append('file', file);
   const res = await fetch(`${httpBaseUrl()}/auth/avatar`, {

@@ -15,44 +15,47 @@ interface TopBarProps {
 
 export const TopBar: React.FC<TopBarProps> = ({ roomName, roomId, playerCount, maxPlayers, phase, timer, round, onExit }) => {
   return (
-    <div className="flex items-center justify-between px-6 py-4 bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100">
-      <div className="flex items-center gap-4">
+    <div className="flex items-center justify-between px-3 sm:px-6 py-3 sm:py-4 bg-white/80 backdrop-blur-md sticky top-0 z-20 border-b border-slate-100">
+      <div className="flex items-center gap-2 sm:gap-4 flex-1 min-w-0">
         {onExit && (
           <button 
             onClick={onExit}
-            className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-red-500 transition-colors"
+            className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 hover:text-red-500 transition-colors flex-shrink-0"
             title="退出房间"
           >
             <LogOut className="w-5 h-5" />
           </button>
         )}
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold tracking-tight text-slate-900">{roomName}</h1>
+        <div className="flex flex-col min-w-0 flex-1">
+          <div className="flex items-center gap-2 min-w-0">
+            <h1 className="text-sm sm:text-lg font-bold tracking-tight text-slate-900 truncate">{roomName}</h1>
             {roomId && (
-              <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-wider">
+              <span className="hidden sm:inline-block px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-black rounded-full uppercase tracking-wider flex-shrink-0">
                 ID: {roomId}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 text-slate-400 text-xs font-medium">
             <Users className="w-3 h-3" />
-            <span>{playerCount}/{maxPlayers} 位玩家</span>
+            <span>{playerCount}/{maxPlayers}</span>
           </div>
         </div>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
         <div className="flex flex-col items-end">
-          <span className={`text-[10px] uppercase tracking-widest font-bold ${
+          <span className={`text-[10px] sm:text-xs uppercase tracking-wider font-bold whitespace-nowrap ${
             phase === '投票' ? 'text-primary' : 'text-blue-accent'
           }`}>
-            {phase !== '大厅' && round ? `第${round}轮 · ` : ''}{phase}阶段
+            {phase !== '大厅' && round ? (
+              <span className="hidden sm:inline">第{round}轮 · </span>
+            ) : null}
+            {phase}
           </span>
           {phase !== '大厅' && (
-            <div className="flex items-center gap-1.5 text-slate-900 font-bold">
-              <Timer className="w-4 h-4 text-slate-400" />
-              <span className="tabular-nums">{timer}s</span>
+            <div className="flex items-center gap-1 sm:gap-1.5 text-slate-900 font-bold">
+              <Timer className="w-3 sm:w-4 h-3 sm:h-4 text-slate-400" />
+              <span className="tabular-nums text-sm sm:text-base">{timer}s</span>
             </div>
           )}
         </div>

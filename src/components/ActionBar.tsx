@@ -28,16 +28,16 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   canStart
 }) => {
   return (
-    <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-game-bg via-game-bg to-transparent pointer-events-none">
-      <div className="max-w-md mx-auto flex items-center justify-between gap-4 pointer-events-auto">
+    <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-6 bg-gradient-to-t from-game-bg via-game-bg to-transparent pointer-events-none">
+      <div className="max-w-md mx-auto flex items-center justify-between gap-2 sm:gap-4 pointer-events-auto">
         <motion.button
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onChatClick}
-          className="w-14 h-14 flex items-center justify-center bg-white rounded-2xl card-shadow text-slate-400 hover:text-slate-600 transition-colors"
+          className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center bg-white rounded-xl sm:rounded-2xl card-shadow text-slate-400 hover:text-slate-600 transition-colors"
           title="查看词语"
         >
-          <Eye className="w-6 h-6" />
+          <Eye className="w-5 h-5 sm:w-6 sm:h-6" />
         </motion.button>
 
         {isLobby ? (
@@ -46,9 +46,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={onStartClick}
-              className="flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl font-bold text-white shadow-lg transition-all bg-emerald-500 shadow-emerald-500/20 hover:brightness-110"
+              className="flex-1 h-12 sm:h-14 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base text-white shadow-lg transition-all bg-emerald-500 shadow-emerald-500/20 hover:brightness-110"
             >
-              <CheckCircle className="w-5 h-5" />
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>开始游戏</span>
             </motion.button>
           ) : (
@@ -56,13 +56,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               onClick={onReadyClick}
-              className={`flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl font-bold text-white shadow-lg transition-all ${
+              className={`flex-1 h-12 sm:h-14 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base text-white shadow-lg transition-all ${
                 isReady 
                   ? 'bg-emerald-500 shadow-emerald-500/20' 
                   : 'bg-primary shadow-primary/20 hover:brightness-110'
               }`}
             >
-              <CheckCircle className="w-5 h-5" />
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>{isReady ? '已准备' : '准备游戏'}</span>
             </motion.button>
           )
@@ -72,13 +72,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             whileTap={{ scale: 0.98 }}
             onClick={onVoteClick}
             disabled={!canVote}
-            className={`flex-1 h-14 flex items-center justify-center gap-2 rounded-2xl font-bold text-white shadow-lg transition-all ${
+            className={`flex-1 h-12 sm:h-14 flex items-center justify-center gap-1.5 sm:gap-2 rounded-xl sm:rounded-2xl font-bold text-sm sm:text-base text-white shadow-lg transition-all ${
               canVote 
                 ? 'bg-primary shadow-primary/20 hover:brightness-110' 
                 : 'bg-slate-200 cursor-not-allowed'
             }`}
           >
-            <Vote className="w-5 h-5" />
+            <Vote className="w-4 h-4 sm:w-5 sm:h-5" />
             <span>立即投票</span>
           </motion.button>
         )}
@@ -87,9 +87,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
           onClick={onEmojiClick}
-          className="w-14 h-14 flex items-center justify-center bg-white rounded-2xl card-shadow text-slate-400 hover:text-slate-600 transition-colors"
+          className="w-12 h-12 sm:w-14 sm:h-14 flex items-center justify-center bg-white rounded-xl sm:rounded-2xl card-shadow text-slate-400 hover:text-slate-600 transition-colors"
         >
-          <Smile className="w-6 h-6" />
+          <Smile className="w-5 h-5 sm:w-6 sm:h-6" />
         </motion.button>
       </div>
     </div>

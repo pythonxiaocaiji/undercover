@@ -5,6 +5,7 @@ import { SpeakerFocus } from './components/SpeakerFocus';
 import { PlayerCard } from './components/PlayerCard';
 import { ActionBar } from './components/ActionBar';
 import { VotingModal } from './components/VotingModal';
+import { PhaseTransition } from './components/PhaseTransition';
 import { HomeView } from './components/HomeView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
@@ -13,7 +14,7 @@ import { WordsAdminView } from './components/WordsAdminView';
 import { MessagesView } from './components/MessagesView';
 import { UserListView } from './components/UserListView';
 import { useToast } from './components/Toast';
-import { FriendItem, Player, GameState, RoomConfig, PlayerRole } from './types';
+import { FriendItem, Player, GameState, RoomConfig, PlayerRole, GamePhase } from './types';
 import {
   BackendRoomState,
   clearRoomInvites,
@@ -133,6 +134,9 @@ export default function App() {
   const myPlayerRef = useRef<Player | null>(null);
 
   const [authMe, setAuthMe] = useState<UserProfile | null>(null);
+  const [showPhaseTransition, setShowPhaseTransition] = useState(false);
+  const [transitionPhase, setTransitionPhase] = useState<GamePhase>('大厅');
+  const prevPhaseRef = useRef<GamePhase>('大厅');
 
   const EMOJIS = ['👍', '👎', '😂', '😮', '😢', '😡', '🔥', '❤️', '🤔', '👀'];
 
@@ -368,6 +372,14 @@ export default function App() {
       allowJoin: Boolean(state.allowJoin ?? true),
       allowInvite: Boolean(state.allowInvite ?? true),
     }));
+
+    // Trigger phase transition animation
+    if (prevPhaseRef.current !== state.phase && state.phase !== '大厅') {
+      setTransitionPhase(state.phase);
+      setShowPhaseTransition(true);
+      setTimeout(() => setShowPhaseTransition(false), 2500);
+    }
+    prevPhaseRef.current = state.phase;
   };
 
   const connectWs = (roomId: string, playerId: string) => {
@@ -799,7 +811,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-game-bg pb-32">
+    <div className="min-h-screen bg-game-bg pb-24 sm:pb-32">
       <TopBar
         roomName={gameState.roomName}
         roomId={gameState.roomId}
@@ -811,7 +823,13 @@ export default function App() {
         onExit={handleExit}
       />
 
-      <main className="max-w-2xl mx-auto px-6">
+      <PhaseTransition 
+        phase={transitionPhase} 
+        round={gameState.round}
+        show={showPhaseTransition}
+      />
+
+      <main className="max-w-2xl mx-auto px-3 sm:px-6">
         <AnimatePresence mode="wait">
           {/* ——— 大厅阶段 ——— */}
           {gameState.phase === '大厅' && (
@@ -819,17 +837,17 @@ export default function App() {
               key="lobby"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-12 space-y-8"
+              className="flex flex-col items-center justify-center py-8 sm:py-12 space-y-6 sm:space-y-8"
             >
-              <div className="text-center space-y-4">
-                <h2 className="text-3xl font-black text-slate-900">
+              <div className="text-center space-y-3 sm:space-y-4">
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-900">
                   {players.length < gameState.maxPlayers ? '等待玩家进入...' : '等待玩家准备...'}
                 </h2>
-                <div className="flex items-center justify-center gap-2 px-6 py-3 bg-white rounded-2xl card-shadow">
-                  <span className="text-slate-400 font-bold text-sm">房间号:</span>
-                  <span className="text-primary font-black text-xl tracking-wider">{gameState.roomId}</span>
+                <div className="flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-white rounded-xl sm:rounded-2xl card-shadow">
+                  <span className="text-slate-400 font-bold text-xs sm:text-sm">房间号:</span>
+                  <span className="text-primary font-black text-lg sm:text-xl tracking-wider">{gameState.roomId}</span>
                 </div>
-                <p className="text-slate-400 font-medium">
+                <p className="text-sm sm:text-base text-slate-400 font-medium">
                   已准备: {players.filter(p => p.isReady).length} / {players.length}
                 </p>
               </div>
@@ -843,18 +861,18 @@ export default function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
-              className="flex flex-col items-center justify-center py-10 space-y-6"
+              className="flex flex-col items-center justify-center py-6 sm:py-10 space-y-4 sm:space-y-6"
             >
-              <div className="text-center space-y-3">
-                <div className="text-sm font-black text-slate-400 uppercase tracking-widest">投票结果</div>
+              <div className="text-center space-y-2 sm:space-y-3">
+                <div className="text-xs sm:text-sm font-black text-slate-400 uppercase tracking-widest">投票结果</div>
                 {eliminatedPlayer ? (
                   <>
-                    <div className="w-20 h-20 rounded-3xl overflow-hidden border-4 border-red-200 shadow-lg mx-auto">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl overflow-hidden border-4 border-red-200 shadow-lg mx-auto">
                       <img src={eliminatedPlayer.avatar} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                     </div>
-                    <h2 className="text-2xl font-black text-slate-900">{eliminatedPlayer.name} 被淘汰</h2>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">{eliminatedPlayer.name} 被淘汰</h2>
                     {eliminatedPlayer.role && (
-                      <span className={`inline-block px-4 py-1.5 rounded-full text-sm font-black ${
+                      <span className={`inline-block px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs sm:text-sm font-black ${
                         eliminatedPlayer.role === '卧底'
                           ? 'bg-red-100 text-red-600'
                           : 'bg-blue-100 text-blue-600'
@@ -865,11 +883,11 @@ export default function App() {
                   </>
                 ) : (
                   <>
-                    <h2 className="text-2xl font-black text-slate-900">本轮无人被淘汰</h2>
-                    <p className="text-slate-400 font-medium">全员弃票或票数相同</p>
+                    <h2 className="text-xl sm:text-2xl font-black text-slate-900">本轮无人被淘汰</h2>
+                    <p className="text-sm sm:text-base text-slate-400 font-medium">全员弃票或票数相同</p>
                   </>
                 )}
-                <p className="text-slate-400 font-bold text-sm">{gameState.timer}s 后进入下一轮</p>
+                <p className="text-slate-400 font-bold text-xs sm:text-sm">{gameState.timer}s 后进入下一轮</p>
               </div>
             </motion.div>
           )}
@@ -1007,12 +1025,12 @@ export default function App() {
         </AnimatePresence>
 
         {(gameState.phase === '大厅' || gameState.phase === '发言' || gameState.phase === '投票' || gameState.phase === '结果') && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-400 uppercase tracking-widest">
                 玩家列表
               </h3>
-              <div className="flex items-center gap-3 flex-1 ml-4">
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 ml-3 sm:ml-4">
                 <div className="h-px flex-1 bg-slate-100" />
                 {gameState.phase === '大厅' && (isHost || gameState.allowInvite !== false) && (
                   <button
@@ -1025,7 +1043,7 @@ export default function App() {
                         toast('error', '加载好友失败', String(e?.message || e));
                       }
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-white card-shadow text-xs font-black text-primary"
+                    className="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-white card-shadow text-[10px] sm:text-xs font-black text-primary"
                   >
                     邀请好友
                   </button>
@@ -1033,7 +1051,7 @@ export default function App() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
               {players.map((player) => (
                 <PlayerCard 
                   key={player.id} 
@@ -1114,21 +1132,21 @@ export default function App() {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-50 bg-white p-4 rounded-[32px] shadow-2xl border border-slate-100 w-[90%] max-w-sm"
+              className="fixed bottom-24 sm:bottom-32 left-1/2 -translate-x-1/2 z-50 bg-white p-3 sm:p-4 rounded-2xl sm:rounded-[32px] shadow-2xl border border-slate-100 w-[90%] max-w-sm"
             >
-              <div className="text-center mb-4">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+              <div className="text-center mb-3 sm:mb-4">
+                <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest">
                   发送表情给 {players.find(p => p.id === showEmojiPicker.targetId)?.name}
                 </p>
               </div>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                 {EMOJIS.map(emoji => (
                   <motion.button
                     key={emoji}
                     whileHover={{ scale: 1.2 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => showEmojiPicker.targetId && sendReaction(showEmojiPicker.targetId, emoji)}
-                    className="text-3xl p-2 hover:bg-slate-50 rounded-2xl transition-colors"
+                    className="text-2xl sm:text-3xl p-1.5 sm:p-2 hover:bg-slate-50 rounded-xl sm:rounded-2xl transition-colors"
                   >
                     {emoji}
                   </motion.button>
@@ -1146,10 +1164,10 @@ export default function App() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-30 bg-white px-8 py-4 rounded-2xl shadow-2xl border-2 border-primary flex flex-col items-center"
+            className="fixed bottom-20 sm:bottom-24 left-1/2 -translate-x-1/2 z-30 bg-white px-6 sm:px-8 py-3 sm:py-4 rounded-xl sm:rounded-2xl shadow-2xl border-2 border-primary flex flex-col items-center max-w-[90%]"
           >
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">你的词语</span>
-            <span className="text-2xl font-black text-primary">{mySecret?.word || ''}</span>
+            <span className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">你的词语</span>
+            <span className="text-xl sm:text-2xl font-black text-primary">{mySecret?.word || ''}</span>
           </motion.div>
         )}
       </AnimatePresence>
