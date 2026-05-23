@@ -400,7 +400,11 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
         state = await _get_room_state(room.id)
         if not state:
             continue
-        
+
+        # Only join rooms that are actually in 大厅 phase (DB phase is never updated)
+        if state.get("phase") != "大厅":
+            continue
+
         players = state.get("players", [])
         max_players = int(state.get("maxPlayers", room.max_players))
         
