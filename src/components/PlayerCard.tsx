@@ -10,10 +10,11 @@ interface PlayerCardProps {
   isSelected?: boolean;
   isMe?: boolean;
   reaction?: string;
+  chatBubble?: string;
   onClick?: () => void;
 }
 
-export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, isSelected, isMe, reaction, onClick }) => {
+export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, isSelected, isMe, reaction, chatBubble, onClick }) => {
   const isEliminated = player.status === 'eliminated';
   const isVoted = player.status === 'voted';
   const isActive = player.status === 'active';
@@ -56,6 +57,20 @@ export const PlayerCard: React.FC<PlayerCardProps> = ({ player, isSelectable, is
             className="absolute top-0 z-30 text-3xl pointer-events-none"
           >
             {reaction}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {chatBubble && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.9 }}
+            animate={{ opacity: 1, y: -4, scale: 1 }}
+            exit={{ opacity: 0, y: -10, scale: 0.9 }}
+            className="absolute top-0 left-1/2 -translate-x-1/2 z-20 bg-white rounded-xl px-2 py-1 shadow-lg border border-slate-100 max-w-[110px] pointer-events-none"
+          >
+            <p className="text-[10px] font-semibold text-slate-700 truncate whitespace-nowrap leading-tight">{chatBubble}</p>
+            <div className="absolute -bottom-[5px] left-1/2 -translate-x-1/2 w-2.5 h-2.5 bg-white border-r border-b border-slate-100 rotate-45" />
           </motion.div>
         )}
       </AnimatePresence>

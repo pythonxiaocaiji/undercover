@@ -43,7 +43,7 @@ export const SpeakerFocus: React.FC<SpeakerFocusProps> = ({ player, timer, maxTi
           />
         )}
         {/* Progress Ring */}
-        <svg className="w-32 h-32 sm:w-40 sm:h-40 transform -rotate-90">
+        <svg className="w-32 h-32 sm:w-40 sm:h-40 transform -rotate-90" viewBox="0 0 160 160">
           <circle
             cx={radius + 20}
             cy={radius + 20}

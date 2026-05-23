@@ -120,6 +120,8 @@ export default function App() {
   const [isExitConfirmOpen, setIsExitConfirmOpen] = useState(false);
   const [eliminatedPlayer, setEliminatedPlayer] = useState<Player | null>(null);
   const [reactions, setReactions] = useState<Record<string, string>>({});
+  const [chatBubbles, setChatBubbles] = useState<Record<string, string>>({});
+  const prevEliminatedRef = useRef<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<{ show: boolean; targetId: string | null }>({ show: false, targetId: null });
   const [showInviteFriends, setShowInviteFriends] = useState(false);
   const [friends, setFriends] = useState<FriendItem[]>([]);
@@ -332,6 +334,8 @@ export default function App() {
     setGameState(INITIAL_GAME_STATE);
     setRoomConfig(null);
     setReactions({});
+    setChatBubbles({});
+    prevEliminatedRef.current = null;
     setMySecret(null);
     setChatMessages([]);
     setShowChat(false);
@@ -374,8 +378,6 @@ export default function App() {
       return base;
     });
     setPlayers(mappedPlayers);
-    setReactions(state.reactions || {});
-
     setRoomConfig({
       roomName: state.roomName,
       playerCount: mappedPlayers.length,
@@ -390,11 +392,12 @@ export default function App() {
     if (state.eliminatedPlayerId) {
       const ep = mappedPlayers.find(p => p.id === state.eliminatedPlayerId) || null;
       setEliminatedPlayer(ep);
-      // Play eliminated sound
-      if (ep) {
+      if (ep && state.eliminatedPlayerId !== prevEliminatedRef.current) {
         soundManager.play('eliminated');
+        prevEliminatedRef.current = state.eliminatedPlayerId;
       }
     } else if (state.phase !== '结果') {
+      prevEliminatedRef.current = null;
       setEliminatedPlayer(null);
       setLastWordsSent(false);
       setLastWordsInput('');
@@ -490,6 +493,14 @@ export default function App() {
         const chatMsg = msg.payload as ChatMessage;
         setChatMessages(prev => [...prev.slice(-199), chatMsg]);
         setUnreadChat(prev => showChatRef.current ? 0 : prev + 1);
+        setChatBubbles(prev => ({ ...prev, [chatMsg.playerId]: chatMsg.message }));
+        setTimeout(() => {
+          setChatBubbles(prev => {
+            const next = { ...prev };
+            delete next[chatMsg.playerId];
+            return next;
+          });
+        }, 4000);
       }
       if (msg.type === 'reaction') {
         const payload = msg.payload as { targetPlayerId: string; emoji: string };
@@ -1324,6 +1335,7 @@ export default function App() {
                   player={player} 
                   isMe={player.id === (roomPlayerId || myPlayer.id)}
                   reaction={reactions[player.id]}
+                  chatBubble={chatBubbles[player.id]}
                   onClick={() => {
                     if (gameState.phase !== '结束') {
                       setShowEmojiPicker({ show: true, targetId: player.id });
