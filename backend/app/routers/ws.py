@@ -669,15 +669,40 @@ async def ws_room(websocket: WebSocket, room_id: str):
             state = await _get_room_state(room_id)
             if player_id and state:
                 phase = state.get("phase", "大厅")
+                
+                # 如果是房主断开，解散房间
                 if _is_host(state, player_id):
                     await manager.broadcast(room_id, {"type": "room:closed", "payload": {"roomId": room_id}})
                     await _dissolve_room(room_id)
-                elif phase in ("发言", "投票", "结果", "结束"):
-                    pass
                 else:
+                    # 非房主断开连接，从房间中移除该玩家
                     state = _remove_player_from_state(state, player_id)
-                    await _set_room_state(room_id, state)
-                    await manager.broadcast(room_id, {"type": "state", "payload": state})
+                    
+                    # 如果房间没有玩家了，解散房间
+                    if not state.get("players"):
+                        await _dissolve_room(room_id)
+                    else:
+                        # 如果游戏正在进行中，检查是否需要重新计算胜负
+                        if phase in ("发言", "投票", "结果"):
+                            civilians, undercovers = await _count_alive_sides(room_id, state)
+                            
+                            # 检查胜负条件
+                            if undercovers <= 0:
+                                state["winner"] = "平民"
+                                state["phase"] = "结束"
+                                state["timer"] = 0
+                                state["currentSpeakerId"] = None
+                                await _reveal_roles(room_id, state, None)
+                            elif undercovers >= civilians:
+                                state["winner"] = "卧底"
+                                state["phase"] = "结束"
+                                state["timer"] = 0
+                                state["currentSpeakerId"] = None
+                                await _reveal_roles(room_id, state, None)
+                        
+                        # 保存状态并广播
+                        await _set_room_state(room_id, state)
+                        await manager.broadcast(room_id, {"type": "state", "payload": state})
         finally:
             await manager.disconnect(room_id, websocket)
     except Exception:
