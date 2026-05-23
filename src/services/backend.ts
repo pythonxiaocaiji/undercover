@@ -176,6 +176,10 @@ export function wsSendStateUpdate(ws: WebSocket, state: BackendRoomState) {
   ws.send(JSON.stringify({ type: 'state:update', payload: { state } }));
 }
 
+export function wsSendLeave(ws: WebSocket, playerId: string) {
+  ws.send(JSON.stringify({ type: 'player:leave', payload: { playerId } }));
+}
+
 export type WordCategoryDto = { id: string; name: string };
 export type WordPairDto = { id: string; category_id: string; civilian_word: string; undercover_word: string };
 

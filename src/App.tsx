@@ -40,6 +40,7 @@ import {
   wsSendStateUpdate,
   wsSendVote,
   wsSendChat,
+  wsSendLeave,
 } from './services/backend';
 import { clearToken, getToken, me as fetchMe } from './services/auth';
 import type { UserProfile } from './services/auth';
@@ -109,7 +110,10 @@ function clearActiveRoom() {
 
 export default function App() {
   const { toast } = useToast();
-  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin' | 'messages' | 'users' | 'matching'>('auth');
+  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin' | 'messages' | 'users' | 'matching' | 'reconnecting'>(() => {
+    if (!getToken()) return 'auth';
+    return loadActiveRoom() ? 'reconnecting' : 'auth';
+  });
   const [userStatus, setUserStatus] = useState<'online' | 'busy'>('online');
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
@@ -322,6 +326,9 @@ export default function App() {
     intentionalCloseRef.current = true;
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
     if (wsRef.current) {
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsSendLeave(wsRef.current, roomPlayerId || myPlayer.id);
+      }
       wsRef.current.close();
       wsRef.current = null;
     }
@@ -792,6 +799,37 @@ export default function App() {
   };
 
   const currentSpeaker = players.find(p => p.id === gameState.currentSpeakerId) || null;
+
+  if (view === 'reconnecting') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center gap-8 px-6">
+        <div className="relative w-24 h-24 flex items-center justify-center">
+          <motion.div
+            className="absolute inset-0 rounded-full border-2 border-primary/30"
+            animate={{ scale: [1, 1.8], opacity: [0.5, 0] }}
+            transition={{ duration: 1.6, repeat: Infinity, ease: 'easeOut' }}
+          />
+          <div className="w-16 h-16 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+              className="w-8 h-8 rounded-full border-[3px] border-primary border-t-transparent"
+            />
+          </div>
+        </div>
+        <div className="text-center space-y-1">
+          <h2 className="text-xl font-black text-slate-800">正在返回房间</h2>
+          <p className="text-slate-400 text-sm">连接中，请稍候…</p>
+        </div>
+        <button
+          onClick={() => { clearActiveRoom(); setActiveRoom(null); setView('auth'); }}
+          className="text-xs text-slate-400 underline underline-offset-2"
+        >
+          取消并重新登录
+        </button>
+      </div>
+    );
+  }
 
   if (view === 'matching') {
     return (
