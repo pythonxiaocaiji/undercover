@@ -430,6 +430,14 @@ async def ws_room(websocket: WebSocket, room_id: str):
 
                 if _is_host(current, player_id) and merged.get("phase") == "投票" and int(merged.get("timer", 0)) <= 0:
                     await _settle_vote_if_needed(room_id, merged)
+
+                # On 结束 transition: remove disconnected ghost players and reset isReady
+                if merged.get("phase") == "结束" and (not current or current.get("phase") != "结束"):
+                    connected_ids = await manager.get_connected_player_ids(room_id)
+                    merged["players"] = [p for p in merged.get("players", []) if p.get("id") in connected_ids]
+                    for p in merged.get("players", []):
+                        p["isReady"] = False
+
                 await _set_room_state(room_id, merged)
                 await manager.broadcast(room_id, {"type": "state", "payload": merged})
                 continue
@@ -458,6 +466,9 @@ async def ws_room(websocket: WebSocket, room_id: str):
                     continue
                 if not all(p.get("isReady") for p in state.get("players", [])):
                     await websocket.send_json({"type": "error", "error": "not_all_ready"})
+                    continue
+                if len(state.get("players", [])) < 3:
+                    await websocket.send_json({"type": "error", "error": "not_enough_players"})
                     continue
 
                 state = await _restart_game(room_id, state)

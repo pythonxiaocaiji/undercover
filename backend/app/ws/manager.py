@@ -42,6 +42,10 @@ class ConnectionManager:
             except Exception:
                 await self.disconnect(room_id, ws)
 
+    async def get_connected_player_ids(self, room_id: str) -> set[str]:
+        async with self._lock:
+            return set(self._room_players.get(room_id, {}).keys())
+
     async def send_to_player(self, room_id: str, player_id: str, message: dict) -> None:
         async with self._lock:
             ws = self._room_players.get(room_id, {}).get(player_id)

@@ -483,6 +483,10 @@ export default function App() {
           confirmExit();
           return;
         }
+        if (err === 'not_enough_players') {
+          toast('warning', '人数不足', '在线玩家不足3人，无法开始游戏');
+          return;
+        }
       }
       if (msg.type === 'secret') {
         const payload = msg.payload as { playerId: string; role: PlayerRole; word: string };
