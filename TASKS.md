@@ -397,3 +397,69 @@ setView('game');
 - [ ] 添加匹配超时机制
 
 ---
+
+
+---
+
+## 2024-01-XX - 快速游戏功能和房间配置（部署完成）
+
+### 完成的功能
+
+#### 1. 快速匹配功能 🚀
+- **新增后端接口**：`POST /rooms/quick-match`
+  - 自动匹配进入允许快速匹配且未满的大厅房间
+  - 按房间创建时间倒序查找
+  - 找不到合适房间时返回友好提示
+
+- **匹配逻辑**
+  - 查找条件：`allow_quick_match=1` 且 `phase="大厅"`
+  - 检查房间是否未满（当前玩家数 < 最大玩家数）
+  - 自动加入第一个符合条件的房间
+  - 如果已在房间中，直接返回房间信息
+
+#### 2. 房间配置增强 ⚙️
+- **新增配置项**：`allowQuickMatch`（允许快速匹配玩家加入）
+  - 默认值：`true`（开启）
+  - 房主创建房间时可配置
+  - 存储到数据库和 Redis 状态中
+
+#### 3. 前端界面更新 🎨
+- **主界面新增按钮**
+  - "快速游戏"按钮：紫粉渐变色，位于"创建房间"和"加入房间"之间
+  - 点击后自动匹配进入合适的房间
+  - 已在房间中时显示友好提示
+
+- **创建房间界面**
+  - 新增"允许快速匹配玩家加入"开关
+  - 紫色主题，与快速游戏按钮呼应
+  - 默认开启状态
+
+### 部署说明
+
+**在服务器上执行：**
+```bash
+cd /opt/undercover
+git pull
+npm install
+npm run build
+```
+
+**然后在浏览器中：**
+1. 按 `Ctrl + Shift + R` 硬刷新
+2. 检查主界面是否显示"快速游戏"按钮
+3. 测试快速游戏功能
+
+### 修改的文件
+- `backend/app/schemas/rooms.py` - 添加 `allow_quick_match` 参数
+- `backend/app/routers/rooms.py` - 创建房间时保存配置，新增快速匹配接口
+- `src/types.ts` - 添加 `allowQuickMatch` 字段
+- `src/services/backend.ts` - 添加 `quickMatch` 函数
+- `src/components/HomeView.tsx` - 添加快速游戏按钮和配置项
+- `src/App.tsx` - 添加 `handleQuickMatch` 处理函数
+- `QUICK_START.md` - 添加快速游戏功能说明和部署指南
+
+### Git 提交
+- Commit: 4351b0f - feat: 添加快速游戏功能和房间快速匹配配置
+- Commit: 4e41106 - fix: 添加快速游戏按钮到主界面
+
+---
