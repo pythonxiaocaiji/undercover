@@ -19,13 +19,13 @@ type SoundType =
 const SOUND_FILES: Record<SoundType, string> = {
   phase_change: '/sounds/phase_change.mp3',
   game_start: '/sounds/game_start.mp3',
-  vote: '/sounds/vote.mp3',
+  vote: '/sounds/notification.mp3',
   eliminated: '/sounds/eliminated.mp3',
   victory: '/sounds/victory.mp3',
   defeat: '/sounds/defeat.mp3',
   player_join: '/sounds/player_join.mp3',
   player_leave: '/sounds/player_leave.mp3',
-  ready: '/sounds/ready.mp3',
+  ready: '/sounds/player_join.mp3',
   notification: '/sounds/notification.mp3',
 };
 
