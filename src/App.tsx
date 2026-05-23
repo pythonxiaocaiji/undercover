@@ -121,7 +121,6 @@ export default function App() {
   const [eliminatedPlayer, setEliminatedPlayer] = useState<Player | null>(null);
   const [reactions, setReactions] = useState<Record<string, string>>({});
   const [chatBubbles, setChatBubbles] = useState<Record<string, string>>({});
-  const prevEliminatedRef = useRef<string | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState<{ show: boolean; targetId: string | null }>({ show: false, targetId: null });
   const [showInviteFriends, setShowInviteFriends] = useState(false);
   const [friends, setFriends] = useState<FriendItem[]>([]);
@@ -335,7 +334,7 @@ export default function App() {
     setRoomConfig(null);
     setReactions({});
     setChatBubbles({});
-    prevEliminatedRef.current = null;
+    setEliminatedPlayer(null);
     setMySecret(null);
     setChatMessages([]);
     setShowChat(false);
@@ -392,12 +391,7 @@ export default function App() {
     if (state.eliminatedPlayerId) {
       const ep = mappedPlayers.find(p => p.id === state.eliminatedPlayerId) || null;
       setEliminatedPlayer(ep);
-      if (ep && state.eliminatedPlayerId !== prevEliminatedRef.current) {
-        soundManager.play('eliminated');
-        prevEliminatedRef.current = state.eliminatedPlayerId;
-      }
     } else if (state.phase !== '结果') {
-      prevEliminatedRef.current = null;
       setEliminatedPlayer(null);
       setLastWordsSent(false);
       setLastWordsInput('');
@@ -622,6 +616,12 @@ export default function App() {
 
     return () => clearInterval(interval);
   }, [view, isHost, gameState.phase, gameState.roomId, roomConfig, players, reactions]);
+
+  useEffect(() => {
+    if (eliminatedPlayer) {
+      soundManager.play('eliminated');
+    }
+  }, [eliminatedPlayer?.id]);
 
   const handleStartGame = async (config: RoomConfig) => {
     const existing = activeRoom || loadActiveRoom();
