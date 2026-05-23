@@ -168,6 +168,10 @@ export function wsSendReaction(ws: WebSocket, fromPlayerId: string, targetPlayer
   ws.send(JSON.stringify({ type: 'reaction', payload: { fromPlayerId, targetPlayerId, emoji } }));
 }
 
+export function wsSendChat(ws: WebSocket, playerId: string, message: string, isLastWords = false) {
+  ws.send(JSON.stringify({ type: 'chat', payload: { playerId, message, isLastWords } }));
+}
+
 export function wsSendStateUpdate(ws: WebSocket, state: BackendRoomState) {
   ws.send(JSON.stringify({ type: 'state:update', payload: { state } }));
 }

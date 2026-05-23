@@ -7,6 +7,8 @@ import { ActionBar } from './components/ActionBar';
 import { VotingModal } from './components/VotingModal';
 import { PhaseTransition } from './components/PhaseTransition';
 import { SoundControl } from './components/SoundControl';
+import { ChatPanel, ChatToggleButton } from './components/ChatPanel';
+import type { ChatMessage } from './components/ChatPanel';
 import { HomeView } from './components/HomeView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
@@ -37,6 +39,7 @@ import {
   wsSendStart,
   wsSendStateUpdate,
   wsSendVote,
+  wsSendChat,
 } from './services/backend';
 import { clearToken, getToken, me as fetchMe } from './services/auth';
 import type { UserProfile } from './services/auth';
@@ -132,6 +135,7 @@ export default function App() {
   const intentionalCloseRef = useRef(false);
 
   const wsRef = useRef<WebSocket | null>(null);
+  const showChatRef = useRef(false);
   const notifyWsRef = useRef<WebSocket | null>(null);
   const notifyPingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const myPlayerRef = useRef<Player | null>(null);
@@ -140,6 +144,14 @@ export default function App() {
   const [showPhaseTransition, setShowPhaseTransition] = useState(false);
   const [transitionPhase, setTransitionPhase] = useState<GamePhase>('大厅');
   const prevPhaseRef = useRef<GamePhase>('大厅');
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [showChat, setShowChat] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
+  const [lastWordsInput, setLastWordsInput] = useState('');
+  const [lastWordsSent, setLastWordsSent] = useState(false);
+
+  useEffect(() => { showChatRef.current = showChat; }, [showChat]);
 
   const EMOJIS = ['👍', '👎', '😂', '😮', '😢', '😡', '🔥', '❤️', '🤔', '👀'];
 
@@ -318,6 +330,10 @@ export default function App() {
     setRoomConfig(null);
     setReactions({});
     setMySecret(null);
+    setChatMessages([]);
+    setShowChat(false);
+    setUnreadChat(0);
+    setLastWordsSent(false);
     setView('home');
   };
 
@@ -337,9 +353,13 @@ export default function App() {
         role: p.role,
         isSpeaking: Boolean(state.currentSpeakerId && p.id === state.currentSpeakerId),
         hasSpoken: state.phase === '发言'
-          ? (speakingOrder && currentSpeakerOrderIdx >= 0
-            ? speakingOrder.indexOf(p.id) < currentSpeakerOrderIdx
-            : (currentSpeakerIndex >= 0 ? idx < currentSpeakerIndex : undefined))
+          ? (() => {
+              if (speakingOrder && currentSpeakerOrderIdx >= 0) {
+                const sIdx = speakingOrder.indexOf(p.id);
+                return sIdx >= 0 && sIdx < currentSpeakerOrderIdx;
+              }
+              return currentSpeakerIndex >= 0 ? idx < currentSpeakerIndex : undefined;
+            })()
           : undefined,
       };
 
@@ -373,6 +393,8 @@ export default function App() {
       }
     } else if (state.phase !== '结果') {
       setEliminatedPlayer(null);
+      setLastWordsSent(false);
+      setLastWordsInput('');
     }
 
     setGameState(prev => ({
@@ -460,6 +482,11 @@ export default function App() {
         if (payload.playerId === playerId) {
           setMySecret({ role: payload.role, word: payload.word });
         }
+      }
+      if (msg.type === 'chat') {
+        const chatMsg = msg.payload as ChatMessage;
+        setChatMessages(prev => [...prev.slice(-199), chatMsg]);
+        setUnreadChat(prev => showChatRef.current ? 0 : prev + 1);
       }
       if (msg.type === 'reaction') {
         const payload = msg.payload as { targetPlayerId: string; emoji: string };
@@ -878,9 +905,33 @@ export default function App() {
   return (
     <div className="min-h-screen bg-game-bg pb-24 sm:pb-32">
       {/* Sound Control Button */}
-      <div className="fixed top-20 right-4 z-30">
+      <div className="fixed top-20 right-4 z-30 flex flex-col gap-2">
         <SoundControl />
+        <ChatToggleButton
+          unread={unreadChat}
+          isOpen={showChat}
+          onClick={() => {
+            setShowChat(v => !v);
+            setUnreadChat(0);
+          }}
+        />
       </div>
+
+      <AnimatePresence>
+        {showChat && (
+          <ChatPanel
+            messages={chatMessages}
+            myPlayerId={roomPlayerId || myPlayer.id}
+            onSend={(message, isLastWords) => {
+              const ws = wsRef.current;
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                wsSendChat(ws, roomPlayerId || myPlayer.id, message, isLastWords);
+              }
+            }}
+            onClose={() => setShowChat(false)}
+          />
+        )}
+      </AnimatePresence>
 
       <TopBar
         roomName={gameState.roomName}
@@ -974,6 +1025,54 @@ export default function App() {
                             <span className="text-sm font-black text-primary">{p.votes} 票</span>
                           </div>
                         ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {/* 临终发言 — only shown to the eliminated player */}
+                {eliminatedPlayer && (() => {
+                  const myId = roomPlayerId || myPlayer.id;
+                  if (eliminatedPlayer.id !== myId) return null;
+                  if (lastWordsSent) return (
+                    <div className="w-full px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-center text-sm text-amber-700 font-medium">
+                      💬 你的临终发言已送达
+                    </div>
+                  );
+                  return (
+                    <div className="w-full space-y-2">
+                      <div className="text-xs font-bold text-amber-600 text-center">你被淘汰了，有什么想说的？</div>
+                      <div className="flex gap-2">
+                        <input
+                          value={lastWordsInput}
+                          onChange={e => setLastWordsInput(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && lastWordsInput.trim()) {
+                              const ws = wsRef.current;
+                              if (ws && ws.readyState === WebSocket.OPEN) {
+                                wsSendChat(ws, myId, lastWordsInput.trim(), true);
+                              }
+                              setLastWordsSent(true);
+                            }
+                          }}
+                          placeholder="临终遗言…"
+                          maxLength={100}
+                          className="flex-1 px-3 py-1.5 text-sm bg-white rounded-xl border border-amber-200 focus:outline-none focus:border-amber-400"
+                        />
+                        <motion.button
+                          whileTap={{ scale: 0.9 }}
+                          onClick={() => {
+                            if (!lastWordsInput.trim()) return;
+                            const ws = wsRef.current;
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                              wsSendChat(ws, myId, lastWordsInput.trim(), true);
+                            }
+                            setLastWordsSent(true);
+                          }}
+                          disabled={!lastWordsInput.trim()}
+                          className="px-3 py-1.5 bg-amber-500 text-white text-sm font-bold rounded-xl disabled:opacity-40"
+                        >
+                          发送
+                        </motion.button>
                       </div>
                     </div>
                   );

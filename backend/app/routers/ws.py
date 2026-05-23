@@ -288,7 +288,7 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
         state["pkCandidates"] = None
         state["pkRound"] = 0
         state["phase"] = "结果"
-        state["timer"] = 5
+        state["timer"] = 10
         state["currentSpeakerId"] = None
         state["votesBy"] = {}
         for p in state.get("players", []):
@@ -326,7 +326,7 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
 
         if state.get("phase") != "结束":
             state["phase"] = "结果"
-            state["timer"] = 5
+            state["timer"] = 10
             state["currentSpeakerId"] = None
             state["votesBy"] = {}
             for p in state.get("players", []):
@@ -364,7 +364,7 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
 
         if state.get("phase") != "结束":
             state["phase"] = "结果"
-            state["timer"] = 5
+            state["timer"] = 10
             state["currentSpeakerId"] = None
             state["votesBy"] = {}
             for p in state.get("players", []):
@@ -418,6 +418,10 @@ async def ws_room(websocket: WebSocket, room_id: str):
                     await websocket.send_json({"type": "error", "error": "room_id_mismatch"})
                     continue
                 current = await _get_room_state(room_id)
+                # Don't let a stale 投票 broadcast overwrite a completed 结果/结束 phase
+                if current and current.get("phase") in ("结果", "结束") and incoming.get("phase") == "投票":
+                    await manager.broadcast(room_id, {"type": "state", "payload": current})
+                    continue
                 merged = dict(current or {})
                 for k in ["phase", "timer", "currentSpeakerId", "speakingOrder", "round", "reactions"]:
                     if k in incoming:
@@ -556,11 +560,10 @@ async def ws_room(websocket: WebSocket, room_id: str):
                         state["pkCandidates"] = None
                         state["pkRound"] = 0
                         state["phase"] = "结果"
-                        state["timer"] = 5
+                        state["timer"] = 10
                         state["currentSpeakerId"] = None
                         state["votesBy"] = {}
                         for p in state.get("players", []):
-                            p["votes"] = 0
                             if p.get("status") == "voted":
                                 p["status"] = "active"
                         await _set_room_state(room_id, state)
@@ -595,11 +598,10 @@ async def ws_room(websocket: WebSocket, room_id: str):
 
                         if state.get("phase") != "结束":
                             state["phase"] = "结果"
-                            state["timer"] = 5
+                            state["timer"] = 10
                             state["currentSpeakerId"] = None
                             state["votesBy"] = {}
                             for p in state.get("players", []):
-                                p["votes"] = 0
                                 if p.get("status") == "voted":
                                     p["status"] = "active"
                     else:
@@ -634,11 +636,10 @@ async def ws_room(websocket: WebSocket, room_id: str):
 
                             if state.get("phase") != "结束":
                                 state["phase"] = "结果"
-                                state["timer"] = 5
+                                state["timer"] = 10
                                 state["currentSpeakerId"] = None
                                 state["votesBy"] = {}
                                 for p in state.get("players", []):
-                                    p["votes"] = 0
                                     if p.get("status") == "voted":
                                         p["status"] = "active"
                         else:
@@ -669,6 +670,28 @@ async def ws_room(websocket: WebSocket, room_id: str):
                 await _set_room_state(room_id, state)
                 await manager.broadcast(room_id, {"type": "reaction", "payload": payload})
                 await manager.broadcast(room_id, {"type": "state", "payload": state})
+                continue
+
+            if msg_type == "chat":
+                state = await _get_room_state(room_id)
+                sender = _find_player(state, player_id) if state else None
+                if not sender:
+                    await websocket.send_json({"type": "error", "error": "player_not_found"})
+                    continue
+                message = str(payload.get("message", "")).strip()[:200]
+                if not message:
+                    continue
+                chat_payload = {
+                    "id": str(uuid.uuid4()),
+                    "playerId": player_id,
+                    "playerName": sender.get("name", ""),
+                    "avatar": sender.get("avatar", ""),
+                    "message": message,
+                    "timestamp": int(datetime.utcnow().timestamp() * 1000),
+                    "phase": state.get("phase", ""),
+                    "isLastWords": bool(payload.get("isLastWords", False)),
+                }
+                await manager.broadcast(room_id, {"type": "chat", "payload": chat_payload})
                 continue
 
             await websocket.send_json({"type": "error", "error": "unknown_message_type"})
