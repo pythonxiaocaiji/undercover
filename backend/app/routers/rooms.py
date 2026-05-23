@@ -417,7 +417,14 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
             # 检查是否已经在房间中
             existing = await db.get(Player, scoped_player_id)
             if existing:
-                return {"roomId": room.id, "playerId": scoped_player_id}
+                # 不允许通过快速匹配重新进入自己创建的房间（房主）
+                if existing.is_host:
+                    continue  # skip this room, keep looking
+                # 非房主：仅当玩家仍在 Redis 状态中时才允许重连
+                if any(p.get("id") == scoped_player_id for p in players):
+                    return {"roomId": room.id, "playerId": scoped_player_id}
+                else:
+                    continue  # was removed from room state, skip
             
             # 创建新玩家
             player = Player(
