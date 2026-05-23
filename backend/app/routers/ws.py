@@ -221,7 +221,10 @@ async def _restart_game(room_id: str, state: dict) -> dict:
     state["winner"] = None
     state["phase"] = "发言"
     state["round"] = 1
-    state["currentSpeakerId"] = players[0]["id"] if players else None
+    _speaking_order = [p["id"] for p in players]
+    random.shuffle(_speaking_order)
+    state["speakingOrder"] = _speaking_order
+    state["currentSpeakerId"] = _speaking_order[0] if _speaking_order else None
     state["timer"] = int(state.get("speakingTime", 30))
     state["votesBy"] = {}
     state["eliminatedPlayerId"] = None
@@ -380,8 +383,11 @@ async def _settle_vote_if_needed(room_id: str, state: dict) -> bool:
         p["votes"] = 0
         if p.get("status") == "voted":
             p["status"] = "active"
+    _pk_order = list(candidates)
+    random.shuffle(_pk_order)
+    state["speakingOrder"] = _pk_order
     state["phase"] = "发言"
-    state["currentSpeakerId"] = candidates[0] if candidates else None
+    state["currentSpeakerId"] = _pk_order[0] if _pk_order else None
     state["timer"] = int(state.get("speakingTime", 30))
     return True
 
@@ -416,7 +422,7 @@ async def ws_room(websocket: WebSocket, room_id: str):
                     continue
                 current = await _get_room_state(room_id)
                 merged = dict(current or {})
-                for k in ["phase", "timer", "currentSpeakerId", "round", "reactions"]:
+                for k in ["phase", "timer", "currentSpeakerId", "speakingOrder", "round", "reactions"]:
                     if k in incoming:
                         merged[k] = incoming.get(k)
                 merged["roomId"] = room_id
@@ -489,8 +495,11 @@ async def ws_room(websocket: WebSocket, room_id: str):
                     await _set_secret(room_id, p["id"], secret)
                     await manager.send_to_player(room_id, p["id"], {"type": "secret", "payload": secret})
 
+                _restart_order = [p["id"] for p in players]
+                random.shuffle(_restart_order)
+                state["speakingOrder"] = _restart_order
                 state["phase"] = "发言"
-                state["currentSpeakerId"] = players[0]["id"] if players else None
+                state["currentSpeakerId"] = _restart_order[0] if _restart_order else None
                 state["timer"] = int(state.get("speakingTime", 30))
                 state["votesBy"] = {}
                 state["eliminatedPlayerId"] = None
@@ -644,8 +653,11 @@ async def ws_room(websocket: WebSocket, room_id: str):
                                 p["votes"] = 0
                                 if p.get("status") == "voted":
                                     p["status"] = "active"
+                            _pk2_order = list(candidates)
+                            random.shuffle(_pk2_order)
+                            state["speakingOrder"] = _pk2_order
                             state["phase"] = "发言"
-                            state["currentSpeakerId"] = candidates[0] if candidates else None
+                            state["currentSpeakerId"] = _pk2_order[0] if _pk2_order else None
                             state["timer"] = int(state.get("speakingTime", 30))
 
                 await _set_room_state(room_id, state)

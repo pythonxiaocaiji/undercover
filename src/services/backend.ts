@@ -20,6 +20,7 @@ export type BackendRoomState = {
   allowQuickMatch?: boolean;
   round: number;
   currentSpeakerId: string | null;
+  speakingOrder?: string[];
   votesBy?: Record<string, string>;
   eliminatedPlayerId?: string | null;
   winner?: '平民' | '卧底';

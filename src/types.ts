@@ -63,6 +63,7 @@ export interface GameState {
   phase: GamePhase;
   timer: number;
   currentSpeakerId: string | null;
+  speakingOrder?: string[];
   round: number;
   winner?: '平民' | '卧底';
   allowJoin?: boolean;

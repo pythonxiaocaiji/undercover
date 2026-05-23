@@ -32,7 +32,7 @@ export const SpeakerFocus: React.FC<SpeakerFocusProps> = ({ player, timer, maxTi
   const offset = circumference - (progress / 100) * circumference;
 
   return (
-    <div className="flex flex-col items-center justify-center py-6 sm:py-10 space-y-3 sm:space-y-4">
+    <div className="flex flex-col items-center justify-center py-4 sm:py-8 space-y-3 sm:space-y-4">
       <div className="relative flex items-center justify-center">
         {/* My-turn glow ring */}
         {isMe && (
@@ -90,20 +90,21 @@ export const SpeakerFocus: React.FC<SpeakerFocusProps> = ({ player, timer, maxTi
         >
           <Mic className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
         </motion.div>
-      </div>
 
-      <AnimatePresence>
-        {isMe && showMyTurnHint && (
-          <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.9 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.9 }}
-            className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap bg-primary text-white text-xs sm:text-sm font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg shadow-primary/30 z-20"
-          >
-            🎤 轮到你发言了！
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {/* My-turn hint — positioned inside the relative ring container to avoid viewport escape */}
+        <AnimatePresence>
+          {isMe && showMyTurnHint && (
+            <motion.div
+              initial={{ opacity: 0, y: 6, scale: 0.9 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.9 }}
+              className="absolute -top-10 sm:-top-11 left-1/2 -translate-x-1/2 whitespace-nowrap bg-primary text-white text-xs sm:text-sm font-black px-4 sm:px-5 py-1.5 sm:py-2 rounded-full shadow-lg shadow-primary/30 z-20"
+            >
+              🎤 轮到你发言了！
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <div className="text-center space-y-1.5 sm:space-y-2">
         <h2 className="text-lg sm:text-xl font-bold text-slate-900">{player.name}</h2>

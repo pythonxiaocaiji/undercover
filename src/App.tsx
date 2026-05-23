@@ -323,6 +323,8 @@ export default function App() {
 
   const applyBackendState = (state: BackendRoomState) => {
     const currentSpeakerIndex = (state.players || []).findIndex(p => p.id === state.currentSpeakerId);
+    const speakingOrder = state.speakingOrder;
+    const currentSpeakerOrderIdx = speakingOrder ? speakingOrder.indexOf(state.currentSpeakerId || '') : -1;
     const mappedPlayers: Player[] = (state.players || []).map((p, idx) => {
       const base: Player = {
         id: p.id,
@@ -334,7 +336,11 @@ export default function App() {
         votes: p.votes,
         role: p.role,
         isSpeaking: Boolean(state.currentSpeakerId && p.id === state.currentSpeakerId),
-        hasSpoken: state.phase === '发言' && currentSpeakerIndex >= 0 ? idx < currentSpeakerIndex : undefined,
+        hasSpoken: state.phase === '发言'
+          ? (speakingOrder && currentSpeakerOrderIdx >= 0
+            ? speakingOrder.indexOf(p.id) < currentSpeakerOrderIdx
+            : (currentSpeakerIndex >= 0 ? idx < currentSpeakerIndex : undefined))
+          : undefined,
       };
 
       if (roomPlayerId && p.id === roomPlayerId && mySecret) {
@@ -378,6 +384,7 @@ export default function App() {
       phase: state.phase,
       timer: state.timer,
       currentSpeakerId: state.currentSpeakerId,
+      speakingOrder: state.speakingOrder ?? prev.speakingOrder,
       round: state.round,
       winner: state.winner,
       allowJoin: Boolean(state.allowJoin ?? true),
@@ -496,13 +503,15 @@ export default function App() {
           next = { ...prev, timer: prev.timer - 1 };
         } else {
           if (prev.phase === '发言') {
-            const activePlayers = players.filter(p => p.status === 'active');
-            const currentIndex = activePlayers.findIndex(p => p.id === prev.currentSpeakerId);
+            const order = prev.speakingOrder?.length
+              ? prev.speakingOrder
+              : players.filter(p => p.status === 'active').map(p => p.id);
+            const currentIndex = order.indexOf(prev.currentSpeakerId || '');
 
-            if (currentIndex >= 0 && currentIndex < activePlayers.length - 1) {
+            if (currentIndex >= 0 && currentIndex < order.length - 1) {
               next = {
                 ...prev,
-                currentSpeakerId: activePlayers[currentIndex + 1].id,
+                currentSpeakerId: order[currentIndex + 1],
                 timer: roomConfig.speakingTime,
               };
             } else {
@@ -517,12 +526,14 @@ export default function App() {
             if (prev.winner) {
               next = { ...prev, phase: '结束', timer: 0 };
             } else {
-              const alivePlayers = players.filter(p => p.status !== 'eliminated');
+              const aliveIds = players.filter(p => p.status !== 'eliminated').map(p => p.id);
+              const shuffled = [...aliveIds].sort(() => Math.random() - 0.5);
               next = {
                 ...prev,
                 phase: '发言',
                 round: prev.round + 1,
-                currentSpeakerId: alivePlayers[0]?.id || null,
+                speakingOrder: shuffled,
+                currentSpeakerId: shuffled[0] || null,
                 timer: roomConfig.speakingTime,
               };
             }
@@ -547,6 +558,7 @@ export default function App() {
             allowInvite: roomConfig.allowInvite,
             round: prev.round,
             currentSpeakerId: next.currentSpeakerId,
+            speakingOrder: next.speakingOrder,
             players: players.map(p => ({
               id: p.id,
               name: p.name,
@@ -646,14 +658,16 @@ export default function App() {
     if (gameState.currentSpeakerId !== myId) return;
     if (!roomConfig) return;
 
-    const activePlayers = players.filter(p => p.status === 'active');
-    const currentIndex = activePlayers.findIndex(p => p.id === myId);
+    const order = gameState.speakingOrder?.length
+      ? gameState.speakingOrder
+      : players.filter(p => p.status === 'active').map(p => p.id);
+    const currentIndex = order.indexOf(myId);
 
     let next: GameState;
-    if (currentIndex >= 0 && currentIndex < activePlayers.length - 1) {
+    if (currentIndex >= 0 && currentIndex < order.length - 1) {
       next = {
         ...gameState,
-        currentSpeakerId: activePlayers[currentIndex + 1].id,
+        currentSpeakerId: order[currentIndex + 1],
         timer: roomConfig.speakingTime,
       };
     } else {
@@ -683,6 +697,7 @@ export default function App() {
         allowInvite: roomConfig.allowInvite,
         round: gameState.round,
         currentSpeakerId: next.currentSpeakerId,
+        speakingOrder: next.speakingOrder,
         players: players.map(p => ({
           id: p.id,
           name: p.name,
