@@ -109,7 +109,7 @@ function clearActiveRoom() {
 
 export default function App() {
   const { toast } = useToast();
-  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin' | 'messages' | 'users'>('auth');
+  const [view, setView] = useState<'home' | 'game' | 'profile' | 'auth' | 'words_admin' | 'messages' | 'users' | 'matching'>('auth');
   const [userStatus, setUserStatus] = useState<'online' | 'busy'>('online');
   const [players, setPlayers] = useState<Player[]>([]);
   const [gameState, setGameState] = useState<GameState>(INITIAL_GAME_STATE);
@@ -133,6 +133,8 @@ export default function App() {
   const [wsDisconnected, setWsDisconnected] = useState(false);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const intentionalCloseRef = useRef(false);
+  const matchingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [matchingSeconds, setMatchingSeconds] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const showChatRef = useRef(false);
@@ -277,6 +279,7 @@ export default function App() {
     return () => {
       if (notifyWsRef.current) { notifyWsRef.current.close(); notifyWsRef.current = null; }
       if (notifyPingRef.current) { clearInterval(notifyPingRef.current); notifyPingRef.current = null; }
+      if (matchingIntervalRef.current) { clearInterval(matchingIntervalRef.current); matchingIntervalRef.current = null; }
     };
   }, [authMe?.id]);
 
@@ -633,6 +636,7 @@ export default function App() {
   };
 
   const handleJoinRoom = async (roomId: string) => {
+    stopMatching();
     const existing = activeRoom || loadActiveRoom();
     if (existing) {
       toast('warning', '无法加入房间', `你已在房间 ${existing.roomId} 中，请先返回或退出后再加入`);
@@ -647,19 +651,53 @@ export default function App() {
     setView('game');
   };
 
+  const stopMatching = () => {
+    if (matchingIntervalRef.current) {
+      clearInterval(matchingIntervalRef.current);
+      matchingIntervalRef.current = null;
+    }
+  };
+
+  const cancelMatching = () => {
+    stopMatching();
+    setView('home');
+  };
+
+  const tryJoinRoom = async (): Promise<boolean> => {
+    try {
+      const resp = await quickMatch({ player: { id: myPlayer.id, name: myPlayer.name, avatar: myPlayer.avatar } });
+      stopMatching();
+      setRoomPlayerId(resp.playerId);
+      const ar: ActiveRoom = { roomId: resp.roomId, playerId: resp.playerId };
+      setActiveRoom(ar);
+      saveActiveRoom(ar);
+      connectWs(resp.roomId, resp.playerId);
+      setView('game');
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const handleQuickMatch = async () => {
     const existing = activeRoom || loadActiveRoom();
     if (existing) {
       toast('warning', '无法快速匹配', `你已在房间 ${existing.roomId} 中，请先返回或退出后再匹配`);
       return;
     }
-    const resp = await quickMatch({ player: { id: myPlayer.id, name: myPlayer.name, avatar: myPlayer.avatar } });
-    setRoomPlayerId(resp.playerId);
-    const ar: ActiveRoom = { roomId: resp.roomId, playerId: resp.playerId };
-    setActiveRoom(ar);
-    saveActiveRoom(ar);
-    connectWs(resp.roomId, resp.playerId);
-    setView('game');
+    const joined = await tryJoinRoom();
+    if (!joined) {
+      setMatchingSeconds(0);
+      setView('matching');
+      let elapsed = 0;
+      matchingIntervalRef.current = setInterval(async () => {
+        elapsed += 1;
+        setMatchingSeconds(elapsed);
+        if (elapsed % 3 === 0) {
+          await tryJoinRoom();
+        }
+      }, 1000);
+    }
   };
 
   const handleResumeRoom = () => {
@@ -746,6 +784,47 @@ export default function App() {
   };
 
   const currentSpeaker = players.find(p => p.id === gameState.currentSpeakerId) || null;
+
+  if (view === 'matching') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex flex-col items-center justify-center gap-10 px-6">
+        {/* Radar pulse rings */}
+        <div className="relative w-40 h-40 flex items-center justify-center">
+          {[0, 0.6, 1.2].map((delay, i) => (
+            <motion.div
+              key={i}
+              className="absolute inset-0 rounded-full border-2 border-primary/30"
+              animate={{ scale: [1, 2.5], opacity: [0.6, 0] }}
+              transition={{ duration: 2.4, delay, repeat: Infinity, ease: 'easeOut' }}
+            />
+          ))}
+          <div className="w-20 h-20 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+              className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full"
+              style={{ borderWidth: 3 }}
+            />
+          </div>
+        </div>
+
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl font-black text-slate-900">正在匹配</h2>
+          <p className="text-slate-500 font-medium text-sm">正在寻找合适的房间，请稍候…</p>
+          <p className="text-xs text-slate-400">已等待 {matchingSeconds}s</p>
+        </div>
+
+        <motion.button
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          onClick={cancelMatching}
+          className="px-10 py-3 bg-white rounded-2xl shadow-md border border-slate-200 font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+        >
+          取消匹配
+        </motion.button>
+      </div>
+    );
+  }
 
   if (view === 'home') {
     return (
