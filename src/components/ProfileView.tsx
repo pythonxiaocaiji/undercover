@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Image as ImageIcon, User } from 'lucide-react';
 import type { UserProfile } from '../services/auth';
+import { compressImage, validateImageFile } from '../lib/imageCompression';
 
 interface ProfileViewProps {
   me: UserProfile;
@@ -36,24 +37,24 @@ export const ProfileView: React.FC<ProfileViewProps> = ({ me, onUpdated, onBack,
     if (!f) return;
     setError(null);
     
-    // Validate file type
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
-    if (!allowedTypes.includes(f.type)) {
-      setError('不支持的图片格式，仅支持 PNG/JPG/WebP');
-      return;
-    }
-
-    // Validate file size (5MB)
-    const maxSize = 5 * 1024 * 1024;
-    if (f.size > maxSize) {
-      setError('图片过大，请选择小于5MB的图片');
+    // Validate file
+    const validation = validateImageFile(f);
+    if (!validation.valid) {
+      setError(validation.error || '文件验证失败');
       return;
     }
 
     setUploading(true);
     try {
+      // Compress image before upload
+      const compressedFile = await compressImage(f, {
+        maxSizeMB: 1,
+        maxWidthOrHeight: 1920,
+        quality: 0.8,
+      });
+
       const svc = await import('../services/auth');
-      const next = await svc.uploadAvatar(f);
+      const next = await svc.uploadAvatar(compressedFile);
       onUpdated(next);
       setAvatar(next.avatar);
     } catch (e: any) {

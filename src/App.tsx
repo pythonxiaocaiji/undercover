@@ -6,6 +6,7 @@ import { PlayerCard } from './components/PlayerCard';
 import { ActionBar } from './components/ActionBar';
 import { VotingModal } from './components/VotingModal';
 import { PhaseTransition } from './components/PhaseTransition';
+import { SoundControl } from './components/SoundControl';
 import { HomeView } from './components/HomeView';
 import { ConfirmModal } from './components/ConfirmModal';
 import { AuthView } from './components/AuthView';
@@ -14,6 +15,7 @@ import { WordsAdminView } from './components/WordsAdminView';
 import { MessagesView } from './components/MessagesView';
 import { UserListView } from './components/UserListView';
 import { useToast } from './components/Toast';
+import { soundManager } from './lib/sounds';
 import { FriendItem, Player, GameState, RoomConfig, PlayerRole, GamePhase } from './types';
 import {
   BackendRoomState,
@@ -180,6 +182,10 @@ export default function App() {
       setView('auth');
       return;
     }
+    
+    // 初始化音效系统
+    soundManager.init();
+    
     fetchMe()
       .then((u) => {
         setAuthMe(u);
@@ -354,6 +360,10 @@ export default function App() {
     if (state.eliminatedPlayerId) {
       const ep = mappedPlayers.find(p => p.id === state.eliminatedPlayerId) || null;
       setEliminatedPlayer(ep);
+      // Play eliminated sound
+      if (ep) {
+        soundManager.play('eliminated');
+      }
     } else if (state.phase !== '结果') {
       setEliminatedPlayer(null);
     }
@@ -378,6 +388,22 @@ export default function App() {
       setTransitionPhase(state.phase);
       setShowPhaseTransition(true);
       setTimeout(() => setShowPhaseTransition(false), 2500);
+      
+      // Play phase change sound
+      soundManager.play('phase_change');
+      
+      // Play specific sounds for certain phases
+      if (state.phase === '发言') {
+        soundManager.play('game_start');
+      } else if (state.phase === '投票') {
+        soundManager.play('notification');
+      } else if (state.phase === '结束') {
+        if (state.winner === '平民') {
+          soundManager.play('victory');
+        } else {
+          soundManager.play('defeat');
+        }
+      }
     }
     prevPhaseRef.current = state.phase;
   };
@@ -593,6 +619,8 @@ export default function App() {
     if (gameState.phase !== '投票') return;
     if (ws && ws.readyState === WebSocket.OPEN) {
       wsSendVote(ws, roomPlayerId || myPlayer.id, playerId);
+      // Play vote sound
+      soundManager.play('vote');
     }
   };
 
@@ -812,6 +840,11 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-game-bg pb-24 sm:pb-32">
+      {/* Sound Control Button */}
+      <div className="fixed top-20 right-4 z-30">
+        <SoundControl />
+      </div>
+
       <TopBar
         roomName={gameState.roomName}
         roomId={gameState.roomId}

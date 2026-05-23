@@ -99,6 +99,129 @@
 
 ---
 
+## 2024-01-XX - 图片压缩与音效系统
+
+### 完成的功能
+
+#### 1. 图片压缩功能 🖼️
+- **新增库**：`browser-image-compression`
+- **新增文件**：`src/lib/imageCompression.ts`
+  - 自动压缩大图片到 1MB 以内
+  - 最大尺寸限制 1920px
+  - 保持 80% 图片质量
+  - 使用 Web Worker 避免阻塞主线程
+  - 如果图片已经很小，跳过压缩
+
+- **功能特性**
+  - 客户端验证（文件类型和大小）
+  - 压缩前最大 10MB，压缩后最大 1MB
+  - 支持 PNG/JPG/WebP 格式
+  - 显示压缩比例和文件大小
+  - 压缩失败时返回原文件
+
+- **集成位置**
+  - `ProfileView.tsx` - 头像上传时自动压缩
+  - 优化上传体验，减少失败率
+
+#### 2. 音效系统 🔊
+- **新增文件**
+  - `src/lib/sounds.ts` - 音效管理器
+  - `src/lib/generatePlaceholderSounds.ts` - 占位音效生成器
+  - `src/components/SoundControl.tsx` - 音效控制组件
+  - `public/sounds/README.md` - 音效文件说明
+
+- **音效管理器功能**
+  - 音效预加载
+  - 音量控制（0-1）
+  - 静音开关
+  - 本地存储用户设置
+  - 单例模式
+
+- **支持的音效类型**
+  - `phase_change` - 阶段切换
+  - `game_start` - 游戏开始
+  - `vote` - 投票
+  - `eliminated` - 玩家淘汰
+  - `victory` - 胜利
+  - `defeat` - 失败
+  - `player_join` - 玩家加入
+  - `player_leave` - 玩家离开
+  - `ready` - 准备
+  - `notification` - 通知
+
+- **音效控制组件**
+  - 悬浮按钮，固定在右上角
+  - 音量滑块（鼠标悬停显示）
+  - 静音/取消静音切换
+  - 实时音量调节
+  - 测试音效播放
+
+- **音效触发点**
+  - 阶段切换时播放 `phase_change`
+  - 游戏开始时播放 `game_start`
+  - 投票时播放 `vote`
+  - 玩家淘汰时播放 `eliminated`
+  - 游戏结束时播放 `victory` 或 `defeat`
+  - 进入投票阶段播放 `notification`
+
+#### 3. 用户体验优化
+- **图片上传**
+  - 自动压缩，提升成功率
+  - 更友好的错误提示
+  - 支持更大的原始文件（10MB）
+
+- **音效体验**
+  - 用户可自由控制音量和静音
+  - 设置持久化到本地存储
+  - 音效文件缺失时自动跳过，不影响游戏
+
+### 技术实现
+
+#### 图片压缩
+```typescript
+// 使用示例
+const compressedFile = await compressImage(originalFile, {
+  maxSizeMB: 1,
+  maxWidthOrHeight: 1920,
+  quality: 0.8,
+});
+```
+
+#### 音效系统
+```typescript
+// 初始化
+soundManager.init();
+
+// 播放音效
+soundManager.play('vote');
+
+// 控制音量
+soundManager.setVolume(0.5);
+
+// 静音
+soundManager.toggleMute();
+```
+
+### 修改的文件
+- `src/components/ProfileView.tsx` - 集成图片压缩
+- `src/App.tsx` - 集成音效系统和控制按钮
+- `package.json` - 添加 `browser-image-compression` 依赖
+
+### 新增的文件
+- `src/lib/imageCompression.ts`
+- `src/lib/sounds.ts`
+- `src/lib/generatePlaceholderSounds.ts`
+- `src/components/SoundControl.tsx`
+- `public/sounds/README.md`
+
+### 待完成
+- [ ] 添加真实的音效文件（目前使用占位音效）
+- [ ] 添加更多音效触发点（玩家加入/离开）
+- [ ] 考虑添加背景音乐
+- [ ] 添加音效预设（不同主题）
+
+---
+
 ## 待办事项
 - [ ] 添加图片压缩功能（可选）
 - [ ] 优化大文件上传进度显示
