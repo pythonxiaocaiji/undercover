@@ -574,10 +574,7 @@ export default function App() {
         }
 
         const ws = wsRef.current;
-        // Don't re-broadcast 投票 at timer=0 — backend is settling the vote;
-        // re-broadcasting would overwrite the 结果 phase the backend just set.
-        const awaitingVoteResult = next.phase === '投票' && next.timer <= 0;
-        if (ws && ws.readyState === WebSocket.OPEN && !awaitingVoteResult) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
           const isNewRound = next.phase === '发言' && prev.phase !== '发言';
           const backendState: BackendRoomState = {
             roomId: prev.roomId,
@@ -984,7 +981,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-game-bg pb-24 sm:pb-32">
       {/* Sound Control Button */}
-      <div className="fixed top-20 right-4 z-30 flex flex-col gap-2">
+      <div className="fixed bottom-28 right-3 z-30 flex flex-col gap-2 sm:bottom-auto sm:top-20 sm:right-4">
         <SoundControl />
         <ChatToggleButton
           unread={unreadChat}
