@@ -51,7 +51,8 @@ export function resolveAvatar(url: string): string {
 
 function wsBaseUrl() {
   const http = httpBaseUrl();
-  return http.replace(/^http/, 'ws');
+  // 正确处理 http → ws 和 https → wss 的转换
+  return http.replace(/^https?/, (match) => match === 'https' ? 'wss' : 'ws');
 }
 
 async function throwIfNotOk(res: Response): Promise<void> {

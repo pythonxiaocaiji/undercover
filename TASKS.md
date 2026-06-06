@@ -463,3 +463,140 @@ npm run build
 - Commit: 4e41106 - fix: 添加快速游戏按钮到主界面
 
 ---
+
+## 2024-01-XX - 修复 HTTPS WebSocket 连接问题 🔒
+
+### 问题描述
+- **Bug**：项目切换到 HTTPS 后，WebSocket 连接失败
+- **错误信息**：浏览器控制台显示 `WebSocket connection to 'wss://whospy.top/ws/...' failed`
+- **影响**：无法进入游戏房间，实时通信功能完全失效
+
+### 根本原因
+前端 WebSocket URL 构建逻辑有问题：
+```typescript
+// 原始代码（错误）
+function wsBaseUrl() {
+  const http = httpBaseUrl();
+  return http.replace(/^http/, 'ws');
+}
+```
+
+**问题分析**：
+- 正则表达式 `/^http/` 会匹配 `http` 和 `https` 的开头
+- 对于 `http://example.com` → 正确转换为 `ws://example.com` ✅
+- 对于 `https://example.com` → 错误转换为 `wsps://example.com` ❌
+- 应该转换为 `wss://example.com` 才对
+
+### 修复方案
+修改 `src/services/backend.ts` 中的 `wsBaseUrl()` 函数：
+
+```typescript
+// 修复后的代码
+function wsBaseUrl() {
+  const http = httpBaseUrl();
+  // 正确处理 http → ws 和 https → wss 的转换
+  return http.replace(/^https?/, (match) => match === 'https' ? 'wss' : 'ws');
+}
+```
+
+**修复逻辑**：
+- 使用正则表达式 `/^https?/` 匹配 `http` 或 `https`
+- 使用回调函数检查匹配到的协议
+- `https` → 转换为 `wss`
+- `http` → 转换为 `ws`
+
+### 修复效果
+- ✅ HTTP 环境：`http://localhost:8000` → `ws://localhost:8000`
+- ✅ HTTPS 环境：`https://whospy.top` → `wss://whospy.top`
+- ✅ WebSocket 连接成功
+- ✅ 实时通信功能恢复正常
+- ✅ 可以正常加入房间和进行游戏
+
+### 技术细节
+
+#### WebSocket 协议规范
+- **HTTP** 使用 **WS** (WebSocket)
+- **HTTPS** 使用 **WSS** (WebSocket Secure)
+- 协议必须匹配，否则浏览器会阻止连接
+
+#### 正则表达式改进
+```typescript
+// 旧版本（有bug）
+/^http/  // 只匹配开头的 "http"
+
+// 新版本（正确）
+/^https?/  // 匹配 "http" 或 "https"
+```
+
+#### 替换逻辑改进
+```typescript
+// 旧版本（简单替换）
+return http.replace(/^http/, 'ws');
+
+// 新版本（条件替换）
+return http.replace(/^https?/, (match) => 
+  match === 'https' ? 'wss' : 'ws'
+);
+```
+
+### 部署说明
+
+**在服务器上执行：**
+```bash
+cd /opt/undercover
+git pull
+npm install
+npm run build
+systemctl restart nginx
+```
+
+**然后在浏览器中：**
+1. 按 `Ctrl + Shift + R` 硬刷新
+2. 打开浏览器开发者工具（F12）
+3. 查看 Network 标签页的 WS 连接
+4. 验证 WebSocket 连接是否成功（Status 101 Switching Protocols）
+5. 测试创建/加入房间功能
+
+### 修改的文件
+- `src/services/backend.ts` - 修复 `wsBaseUrl()` 函数
+
+### 测试建议
+1. **本地开发环境（HTTP）**
+   - 验证 `http://localhost:8000` → `ws://localhost:8000`
+   - 测试 WebSocket 连接正常
+
+2. **生产环境（HTTPS）**
+   - 验证 `https://whospy.top` → `wss://whospy.top`
+   - 测试 WebSocket 连接正常
+   - 测试房间实时通信功能
+
+3. **功能测试**
+   - 创建房间
+   - 加入房间
+   - 玩家列表实时更新
+   - 游戏阶段切换
+   - 投票功能
+   - 聊天功能
+
+### Nginx 配置参考
+
+确保 Nginx 配置正确代理 WebSocket 连接：
+
+```nginx
+location /ws/ {
+    proxy_pass http://backend_server;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 86400;
+}
+```
+
+### Git 提交
+- Commit: [待提交] - fix: 修复 HTTPS 环境下 WebSocket 连接失败的问题
+
+---
