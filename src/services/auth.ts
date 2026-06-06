@@ -16,7 +16,11 @@ export type Captcha = {
 };
 
 function httpBaseUrl() {
-  return (import.meta as any).env?.VITE_BACKEND_URL || 'http://localhost:8000';
+  const envUrl = (import.meta as any).env?.VITE_BACKEND_URL;
+  if (envUrl) return envUrl;
+  // Use the same protocol as the current page to avoid mixed content errors
+  const protocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
+  return `${protocol}//localhost:8000`;
 }
 
 function normalizeAvatar(url: string): string {
