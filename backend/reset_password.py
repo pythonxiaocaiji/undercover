@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.core.security import hash_password
-from app.db.session import async_engine
+from app.db.session import engine
 from sqlalchemy import select, text
 from app.models.user import User
 
@@ -23,7 +23,7 @@ async def reset_password(phone: str, new_password: str):
     password_hash = hash_password(new_password)
     print(f"生成的密码哈希: {password_hash}")
     
-    async with async_engine.begin() as conn:
+    async with engine.begin() as conn:
         # 更新密码
         result = await conn.execute(
             text("UPDATE users SET password_hash = :hash WHERE phone = :phone"),
