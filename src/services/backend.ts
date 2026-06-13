@@ -55,6 +55,12 @@ function wsBaseUrl() {
   return http.replace(/^https?/, (match) => match === 'https' ? 'wss' : 'ws');
 }
 
+function playerAvatar(url: string, seed: string): string {
+  const avatar = (url || '').trim();
+  if (avatar) return avatar;
+  return `https://api.dicebear.com/8.x/fun-emoji/png?seed=${encodeURIComponent(seed || 'undercover')}`;
+}
+
 async function throwIfNotOk(res: Response): Promise<void> {
   if (res.ok) return;
 
@@ -89,6 +95,7 @@ export async function createRoom(params: {
   config: RoomConfig;
   host: Pick<Player, 'id' | 'name' | 'avatar'>;
 }): Promise<{ roomId: string; playerId: string }> {
+  const avatar = playerAvatar(params.host.avatar, params.host.id);
   const res = await fetch(`${httpBaseUrl()}/rooms/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -104,7 +111,7 @@ export async function createRoom(params: {
       allow_quick_match: params.config.allowQuickMatch,
       host_player_id: params.host.id,
       host_player_name: params.host.name,
-      host_avatar: params.host.avatar,
+      host_avatar: avatar,
     }),
   });
   await throwIfNotOk(res);
@@ -115,13 +122,14 @@ export async function joinRoom(params: {
   roomId: string;
   player: Pick<Player, 'id' | 'name' | 'avatar'>;
 }): Promise<{ roomId: string; playerId: string }> {
+  const avatar = playerAvatar(params.player.avatar, params.player.id);
   const res = await fetch(`${httpBaseUrl()}/rooms/${params.roomId}/join`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       player_id: params.player.id,
       player_name: params.player.name,
-      avatar: params.player.avatar,
+      avatar,
     }),
   });
   await throwIfNotOk(res);
@@ -131,13 +139,14 @@ export async function joinRoom(params: {
 export async function quickMatch(params: {
   player: Pick<Player, 'id' | 'name' | 'avatar'>;
 }): Promise<{ roomId: string; playerId: string }> {
+  const avatar = playerAvatar(params.player.avatar, params.player.id);
   const res = await fetch(`${httpBaseUrl()}/rooms/quick-match`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       player_id: params.player.id,
       player_name: params.player.name,
-      avatar: params.player.avatar,
+      avatar,
     }),
   });
   await throwIfNotOk(res);

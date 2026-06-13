@@ -15,13 +15,13 @@ class CreateRoomRequest(BaseModel):
 
     host_player_id: str = Field(min_length=1, max_length=64)
     host_player_name: str = Field(min_length=1, max_length=32)
-    host_avatar: str = Field(min_length=1, max_length=255)
+    host_avatar: str = Field(default="", max_length=255)
 
 
 class JoinRoomRequest(BaseModel):
     player_id: str = Field(min_length=1, max_length=64)
     player_name: str = Field(min_length=1, max_length=32)
-    avatar: str = Field(min_length=1, max_length=255)
+    avatar: str = Field(default="", max_length=255)
 
 
 class ReadyRequest(BaseModel):

@@ -3,6 +3,7 @@ import secrets
 import string
 import uuid
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, or_, select
@@ -34,6 +35,13 @@ router = APIRouter(prefix="/rooms", tags=["rooms"])
 def _gen_room_id() -> str:
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(6))
+
+
+def _player_avatar(value: str | None, seed: str) -> str:
+    avatar = (value or "").strip()
+    if avatar:
+        return avatar
+    return f"https://api.dicebear.com/8.x/fun-emoji/png?seed={quote(seed or 'undercover')}"
 
 
 def _room_state_key(room_id: str) -> str:
@@ -75,6 +83,7 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
     now = datetime.utcnow()
 
     host_player_id = f"{room_id}-{payload.host_player_id}"
+    host_avatar = _player_avatar(payload.host_avatar, host_player_id)
 
     room = Room(
         id=room_id,
@@ -95,7 +104,7 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
         id=host_player_id,
         room_id=room_id,
         name=payload.host_player_name,
-        avatar=payload.host_avatar,
+        avatar=host_avatar,
         is_host=True,
         is_ready=False,
         status="active",
@@ -127,7 +136,7 @@ async def create_room(payload: CreateRoomRequest, db: AsyncSession = Depends(get
             {
                 "id": host.id,
                 "name": host.name,
-                "avatar": host.avatar,
+                "avatar": host_avatar,
                 "status": host.status,
                 "isHost": True,
                 "isReady": False,
@@ -165,6 +174,7 @@ async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = D
 
     now = datetime.utcnow()
     scoped_player_id = f"{room_id}-{payload.player_id}"
+    avatar = _player_avatar(payload.avatar, scoped_player_id)
     existing = await db.get(Player, scoped_player_id)
     if existing:
         return {"roomId": room_id, "playerId": scoped_player_id}
@@ -173,7 +183,7 @@ async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = D
         id=scoped_player_id,
         room_id=room_id,
         name=payload.player_name,
-        avatar=payload.avatar,
+        avatar=avatar,
         is_host=False,
         is_ready=False,
         status="active",
@@ -187,7 +197,7 @@ async def join_room(room_id: str, payload: JoinRoomRequest, db: AsyncSession = D
         {
             "id": player.id,
             "name": player.name,
-            "avatar": player.avatar,
+            "avatar": avatar,
             "status": player.status,
             "isHost": False,
             "isReady": False,
@@ -413,6 +423,7 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
             # 尝试加入这个房间
             now = datetime.utcnow()
             scoped_player_id = f"{room.id}-{payload.player_id}"
+            avatar = _player_avatar(payload.avatar, scoped_player_id)
             
             # 检查是否已经在房间中
             existing = await db.get(Player, scoped_player_id)
@@ -431,7 +442,7 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
                 id=scoped_player_id,
                 room_id=room.id,
                 name=payload.player_name,
-                avatar=payload.avatar,
+                avatar=avatar,
                 is_host=False,
                 is_ready=False,
                 status="active",
@@ -446,7 +457,7 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
                 {
                     "id": player.id,
                     "name": player.name,
-                    "avatar": player.avatar,
+                    "avatar": avatar,
                     "status": player.status,
                     "isHost": False,
                     "isReady": False,
@@ -461,4 +472,3 @@ async def quick_match(payload: JoinRoomRequest, db: AsyncSession = Depends(get_d
     
     # 没有找到合适的房间
     raise HTTPException(status_code=404, detail="暂无可用房间，请稍后再试或创建新房间")
-
