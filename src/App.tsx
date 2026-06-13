@@ -72,6 +72,7 @@ type ActiveRoom = { roomId: string; playerId: string };
 const ACTIVE_ROOM_KEY = 'undercover_active_room';
 const READ_FRIEND_REQUEST_IDS_KEY = 'undercover_read_friend_request_ids';
 const READ_ROOM_INVITE_KEYS_KEY = 'undercover_read_room_invite_keys';
+const NOTIFY_WS_ENABLED = (import.meta as any).env?.VITE_ENABLE_NOTIFY_WS === 'true';
 
 function loadStringArray(key: string): string[] {
   try {
@@ -145,6 +146,7 @@ export default function App() {
   const showChatRef = useRef(false);
   const notifyWsRef = useRef<WebSocket | null>(null);
   const notifyPingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notifyPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const myPlayerRef = useRef<Player | null>(null);
 
   const [authMe, setAuthMe] = useState<UserProfile | null>(null);
@@ -279,11 +281,18 @@ export default function App() {
   useEffect(() => {
     if (!authMe) return;
     setUserStatus((authMe.user_status as 'online' | 'busy') || 'online');
-    connectNotifyWebSocket(authMe.id);
+    if (NOTIFY_WS_ENABLED) {
+      connectNotifyWebSocket(authMe.id);
+    }
     refreshHomeNotifications().catch(() => {});
+    if (notifyPollRef.current) { clearInterval(notifyPollRef.current); notifyPollRef.current = null; }
+    notifyPollRef.current = setInterval(() => {
+      refreshHomeNotifications().catch(() => {});
+    }, 30000);
     return () => {
       if (notifyWsRef.current) { notifyWsRef.current.close(); notifyWsRef.current = null; }
       if (notifyPingRef.current) { clearInterval(notifyPingRef.current); notifyPingRef.current = null; }
+      if (notifyPollRef.current) { clearInterval(notifyPollRef.current); notifyPollRef.current = null; }
       if (matchingIntervalRef.current) { clearInterval(matchingIntervalRef.current); matchingIntervalRef.current = null; }
     };
   }, [authMe?.id]);
